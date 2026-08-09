@@ -1,0 +1,104 @@
+{
+  "name": "turbo-folding",
+  "displayName": "Turbo Folding",
+  "description": "Automatic and manual selective folding extension for VS Code",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onLanguage"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "turboFolding.toggleAutoMode",
+        "title": "Turbo Folding: Toggle Auto Mode"
+      },
+      {
+        "command": "turboFolding.toggleMarker",
+        "title": "Turbo Folding: Toggle Marker on Current Line"
+      },
+      {
+        "command": "turboFolding.foldMarkedExceptCurrent",
+        "title": "Turbo Folding: Fold Marked Regions Except Current"
+      },
+      {
+        "command": "turboFolding.clearAllMarkers",
+        "title": "Turbo Folding: Clear All Markers"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "turboFolding.foldMarkedExceptCurrent",
+        "key": "ctrl+alt+f",
+        "mac": "cmd+alt+f",
+        "when": "editorTextFocus"
+      }
+    ],
+    "menus": {
+      "editor/gutter/context": [
+        {
+          "command": "turboFolding.toggleMarker",
+          "group": "folding@1"
+        },
+        {
+          "command": "turboFolding.foldMarkedExceptCurrent",
+          "group": "folding@2"
+        },
+        {
+          "command": "turboFolding.clearAllMarkers",
+          "group": "folding@3"
+        }
+      ],
+      "editor/lineNumber/context": [
+        {
+          "command": "turboFolding.toggleMarker",
+          "group": "folding@1"
+        },
+        {
+          "command": "turboFolding.foldMarkedExceptCurrent",
+          "group": "folding@2"
+        },
+        {
+          "command": "turboFolding.clearAllMarkers",
+          "group": "folding@3"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Turbo Folding",
+      "properties": {
+        "turboFolding.autoMode.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable automatic folding mode based on cursor position."
+        },
+        "turboFolding.autoMode.previousDepth": {
+          "type": "number",
+          "default": 1,
+          "description": "Folding depth level for sectors above the cursor position."
+        },
+        "turboFolding.autoMode.nextDepth": {
+          "type": "number",
+          "default": 1,
+          "description": "Folding depth level for sectors below the cursor position."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.80.0",
+    "@types/node": "18.x",
+    "typescript": "^5.0.4"
+  }
+}
