@@ -6,12 +6,32 @@ class MarkerManager {
     decorationType;
     // Map document URI string -> Set of line numbers (0-indexed)
     markers = new Map();
+    context;
     constructor(context) {
+        this.context = context;
         const iconPath = vscode.Uri.file(context.asAbsolutePath('resources/green-dot.svg'));
         this.decorationType = vscode.window.createTextEditorDecorationType({
             gutterIconPath: iconPath,
             gutterIconSize: 'contain'
         });
+        this.loadMarkers();
+    }
+    loadMarkers() {
+        const saved = this.context.workspaceState.get('turboFolding.savedMarkers', {});
+        for (const [uriStr, lines] of Object.entries(saved)) {
+            if (Array.isArray(lines) && lines.length > 0) {
+                this.markers.set(uriStr, new Set(lines));
+            }
+        }
+    }
+    async saveMarkers() {
+        const data = {};
+        for (const [uriStr, lineSet] of this.markers.entries()) {
+            if (lineSet.size > 0) {
+                data[uriStr] = Array.from(lineSet);
+            }
+        }
+        await this.context.workspaceState.update('turboFolding.savedMarkers', data);
     }
     toggleMarker(editor, lineNumber) {
         const docUri = editor.document.uri.toString();
@@ -26,6 +46,10 @@ class MarkerManager {
         else {
             lineSet.add(lineToToggle);
         }
+        if (lineSet.size === 0) {
+            this.markers.delete(docUri);
+        }
+        this.saveMarkers();
         this.updateDecorations(editor);
     }
     getMarkedLines(editor) {
@@ -36,6 +60,7 @@ class MarkerManager {
     clearAll(editor) {
         const docUri = editor.document.uri.toString();
         this.markers.delete(docUri);
+        this.saveMarkers();
         this.updateDecorations(editor);
     }
     updateDecorations(editor) {

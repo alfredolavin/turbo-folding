@@ -145,12 +145,22 @@ export function activate(context: vscode.ExtensionContext) {
         }
     }
 
+    // Update decorations for active editor at startup
+    if (vscode.window.activeTextEditor) {
+        markerManager.updateDecorations(vscode.window.activeTextEditor);
+    }
+
     // Event Listeners
     context.subscriptions.push(
         vscode.window.onDidChangeActiveTextEditor(editor => {
             if (editor) {
                 markerManager.updateDecorations(editor);
                 handleAutoFolding(editor);
+            }
+        }),
+        vscode.window.onDidChangeVisibleTextEditors(editors => {
+            for (const editor of editors) {
+                markerManager.updateDecorations(editor);
             }
         }),
         vscode.window.onDidChangeTextEditorSelection(event => {

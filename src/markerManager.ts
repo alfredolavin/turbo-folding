@@ -4,13 +4,36 @@ export class MarkerManager {
     private decorationType: vscode.TextEditorDecorationType;
     // Map document URI string -> Set of line numbers (0-indexed)
     private markers: Map<string, Set<number>> = new Map();
+    private context: vscode.ExtensionContext;
 
     constructor(context: vscode.ExtensionContext) {
+        this.context = context;
         const iconPath = vscode.Uri.file(context.asAbsolutePath('resources/green-dot.svg'));
         this.decorationType = vscode.window.createTextEditorDecorationType({
             gutterIconPath: iconPath,
             gutterIconSize: 'contain'
         });
+
+        this.loadMarkers();
+    }
+
+    private loadMarkers() {
+        const saved = this.context.workspaceState.get<Record<string, number[]>>('turboFolding.savedMarkers', {});
+        for (const [uriStr, lines] of Object.entries(saved)) {
+            if (Array.isArray(lines) && lines.length > 0) {
+                this.markers.set(uriStr, new Set(lines));
+            }
+        }
+    }
+
+    private async saveMarkers() {
+        const data: Record<string, number[]> = {};
+        for (const [uriStr, lineSet] of this.markers.entries()) {
+            if (lineSet.size > 0) {
+                data[uriStr] = Array.from(lineSet);
+            }
+        }
+        await this.context.workspaceState.update('turboFolding.savedMarkers', data);
     }
 
     public toggleMarker(editor: vscode.TextEditor, lineNumber?: number) {
@@ -28,6 +51,11 @@ export class MarkerManager {
             lineSet.add(lineToToggle);
         }
 
+        if (lineSet.size === 0) {
+            this.markers.delete(docUri);
+        }
+
+        this.saveMarkers();
         this.updateDecorations(editor);
     }
 
@@ -40,6 +68,7 @@ export class MarkerManager {
     public clearAll(editor: vscode.TextEditor) {
         const docUri = editor.document.uri.toString();
         this.markers.delete(docUri);
+        this.saveMarkers();
         this.updateDecorations(editor);
     }
 
@@ -64,3 +93,4 @@ export class MarkerManager {
         this.decorationType.dispose();
     }
 }
+
