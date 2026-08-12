@@ -1,13 +1,39 @@
 {
   "name": "turbo-folding",
   "displayName": "Turbo Folding",
-  "description": "Automatic and manual selective folding extension for VS Code with Folding Manager view",
+  "publisher": "alfredolavin",
+  "author": "Alfredo Alex Lavín Caldas <alfredolavin@gmail.com>",
+  "description": "Smart, tag-aware code folding, vivid gutter markers, auto-folding modes, and visual Folding Manager for VS Code.",
   "version": "0.0.1",
+  "license": "MIT",
+  "icon": "icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alfredolavin/turbo-folding"
+  },
+  "bugs": {
+    "url": "https://github.com/alfredolavin/turbo-folding/issues"
+  },
+  "homepage": "https://github.com/alfredolavin/turbo-folding#readme",
+  "keywords": [
+    "folding",
+    "code-folding",
+    "fold",
+    "unfold",
+    "collapse",
+    "expand",
+    "html",
+    "xml",
+    "turbo-folding",
+    "markers",
+    "focus-mode"
+  ],
   "engines": {
     "vscode": "^1.80.0"
   },
   "categories": [
-    "Other"
+    "Other",
+    "Programming Languages"
   ],
   "activationEvents": [
     "onStartupFinished"
