@@ -1,7 +1,7 @@
 {
   "name": "turbo-folding",
   "displayName": "Turbo Folding",
-  "description": "Automatic and manual selective folding extension for VS Code",
+  "description": "Automatic and manual selective folding extension for VS Code with Folding Manager view",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.80.0"
@@ -10,10 +10,33 @@
     "Other"
   ],
   "activationEvents": [
-    "onLanguage"
+    "onStartupFinished"
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "turbo-folding-sidebar",
+          "title": "Turbo Folding",
+          "icon": "resources/sidebar-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "turbo-folding-sidebar": [
+        {
+          "id": "turboFolding.foldingManagerView",
+          "name": "Folding Manager"
+        }
+      ],
+      "explorer": [
+        {
+          "id": "turboFolding.foldingManagerExplorerView",
+          "name": "Turbo Folding Markers"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "turboFolding.toggleAutoMode",
@@ -29,7 +52,38 @@
       },
       {
         "command": "turboFolding.clearAllMarkers",
-        "title": "Turbo Folding: Clear All Markers"
+        "title": "Turbo Folding: Clear All Markers",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "turboFolding.toggleFocusOnSelect",
+        "title": "Turbo Folding: Toggle Focus on Select (Unfold & Fold Others)",
+        "icon": "$(pass-filled)"
+      },
+      {
+        "command": "turboFolding.refreshMarkersView",
+        "title": "Turbo Folding: Refresh Markers",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "turboFolding.focusMarkerItem",
+        "title": "Focus Marker (Unfold & Fold Others)",
+        "icon": "$(fold-down)"
+      },
+      {
+        "command": "turboFolding.deleteMarkerItem",
+        "title": "Delete Marker",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "turboFolding.addMarkerToSameTags",
+        "title": "Turbo Folding: Add Marker to This and All Same Tags at Same Level",
+        "icon": "$(tag-add)"
+      },
+      {
+        "command": "turboFolding.foldOtherSameTags",
+        "title": "Turbo Folding: Fold All Other Same Tags at This Same Level",
+        "icon": "$(fold)"
       }
     ],
     "keybindings": [
@@ -41,6 +95,45 @@
       }
     ],
     "menus": {
+      "view/title": [
+        {
+          "command": "turboFolding.toggleFocusOnSelect",
+          "when": "view == turboFolding.foldingManagerView || view == turboFolding.foldingManagerExplorerView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "turboFolding.refreshMarkersView",
+          "when": "view == turboFolding.foldingManagerView || view == turboFolding.foldingManagerExplorerView",
+          "group": "navigation@2"
+        },
+        {
+          "command": "turboFolding.clearAllMarkers",
+          "when": "view == turboFolding.foldingManagerView || view == turboFolding.foldingManagerExplorerView",
+          "group": "navigation@3"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "turboFolding.focusMarkerItem",
+          "when": "viewItem == markerItem",
+          "group": "inline@1"
+        },
+        {
+          "command": "turboFolding.deleteMarkerItem",
+          "when": "viewItem == markerItem",
+          "group": "inline@2"
+        },
+        {
+          "command": "turboFolding.addMarkerToSameTags",
+          "when": "viewItem == markerItem",
+          "group": "tagActions@1"
+        },
+        {
+          "command": "turboFolding.foldOtherSameTags",
+          "when": "viewItem == markerItem",
+          "group": "tagActions@2"
+        }
+      ],
       "editor/gutter/context": [
         {
           "command": "turboFolding.toggleMarker",
@@ -67,12 +160,59 @@
         {
           "command": "turboFolding.clearAllMarkers",
           "group": "folding@3"
+        },
+        {
+          "command": "turboFolding.addMarkerToSameTags",
+          "group": "tagActions@1"
+        },
+        {
+          "command": "turboFolding.foldOtherSameTags",
+          "group": "tagActions@2"
         }
       ]
     },
     "configuration": {
       "title": "Turbo Folding",
       "properties": {
+        "turboFolding.colorAssignment": {
+          "type": "string",
+          "enum": [
+            "sequential",
+            "random"
+          ],
+          "default": "sequential",
+          "description": "How marker colors are assigned from the vivid palette (sequential or random)."
+        },
+        "turboFolding.focusOnSelect": {
+          "type": "boolean",
+          "default": false,
+          "description": "When selecting a marker in the Folding Manager list, automatically unfold it and fold all other markers."
+        },
+        "turboFolding.palette": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "#FF3366",
+            "#00D2FF",
+            "#00E676",
+            "#FF9100",
+            "#9D00FF",
+            "#FFD600",
+            "#FF1744",
+            "#00E5FF",
+            "#76FF03",
+            "#E040FB",
+            "#2979FF",
+            "#FF6D00",
+            "#1DE9B6",
+            "#F50057",
+            "#651FFF",
+            "#00C853"
+          ],
+          "description": "Vivid color palette for markers."
+        },
         "turboFolding.autoMode.enabled": {
           "type": "boolean",
           "default": false,
