@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { getFoldingRanges, computeFoldingDepths, findSameTagLinesAtSameLevel } from './foldingManager';
+import { getFoldingRanges, computeFoldingDepths, findSameTagLinesAtSameLevel, findFoldablesAtSameLevel } from './foldingManager';
 import { MarkerManager } from './markerManager';
 import { FoldingTreeDataProvider, MarkerTreeItem } from './foldingTreeView';
 
@@ -9,17 +9,13 @@ export function activate(context: vscode.ExtensionContext) {
 
     const treeDataProvider = new FoldingTreeDataProvider(markerManager);
 
-    // Register TreeViews for both the sidebar view container and the explorer
+    // Register TreeView for the sidebar view container
     const sidebarTreeView = vscode.window.createTreeView('turboFolding.foldingManagerView', {
         treeDataProvider,
         showCollapseAll: false
     });
-    const explorerTreeView = vscode.window.createTreeView('turboFolding.foldingManagerExplorerView', {
-        treeDataProvider,
-        showCollapseAll: false
-    });
 
-    context.subscriptions.push(sidebarTreeView, explorerTreeView);
+    context.subscriptions.push(sidebarTreeView);
 
     // Focus on select state
     let focusOnSelect = context.workspaceState.get<boolean>('turboFolding.focusOnSelect', false);
@@ -28,9 +24,23 @@ export function activate(context: vscode.ExtensionContext) {
     const updateViewDescription = () => {
         const desc = focusOnSelect ? 'Focus Mode: ON' : '';
         sidebarTreeView.description = desc;
-        explorerTreeView.description = desc;
     };
     updateViewDescription();
+
+    // Status bar navigation buttons
+    const prevStatusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 95);
+    prevStatusItem.command = 'turboFolding.gotoPrevSameLevel';
+    prevStatusItem.text = '$(arrow-up) Prev Level';
+    prevStatusItem.tooltip = 'Turbo Folding: Go to previous foldable at same level';
+    prevStatusItem.show();
+    context.subscriptions.push(prevStatusItem);
+
+    const nextStatusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 94);
+    nextStatusItem.command = 'turboFolding.gotoNextSameLevel';
+    nextStatusItem.text = '$(arrow-down) Next Level';
+    nextStatusItem.tooltip = 'Turbo Folding: Go to next foldable at same level';
+    nextStatusItem.show();
+    context.subscriptions.push(nextStatusItem);
 
     let isAutoModeProcessing = false;
 
@@ -53,16 +63,13 @@ export function activate(context: vscode.ExtensionContext) {
             return;
         }
 
-        // Helper to resolve range for a given line
+        // Helper to resolve range for a given line — ONLY returns a range when the
+        // line is the EXACT start of a folding range. We never escalate to the parent
+        // to avoid accidentally folding the wrong block when a marker is on a child line.
         const resolveRange = (line: number) => {
             const exactMatches = rawRanges.filter(r => r.start === line);
             if (exactMatches.length > 0) {
                 return exactMatches[0];
-            }
-            const enclosing = rawRanges.filter(r => r.start <= line && r.end >= line);
-            if (enclosing.length > 0) {
-                enclosing.sort((a, b) => (a.end - a.start) - (b.end - b.start));
-                return enclosing[0];
             }
             return null;
         };
@@ -135,9 +142,9 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
-    // Add marker to this line and all same tags at the same indentation level
-    const addMarkerToSameTagsCmd = vscode.commands.registerCommand(
-        'turboFolding.addMarkerToSameTags',
+    // Add markers to all foldables at the same indentation level (language-agnostic)
+    const addMarkersAtSameLevelCmd = vscode.commands.registerCommand(
+        'turboFolding.addMarkersAtSameLevel',
         async (itemOrArgs?: MarkerTreeItem | any) => {
             const editor = vscode.window.activeTextEditor;
             if (!editor) { return; }
@@ -153,7 +160,7 @@ export function activate(context: vscode.ExtensionContext) {
                 referenceLine = editor.selection.active.line;
             }
 
-            const matchingLines = findSameTagLinesAtSameLevel(editor.document, referenceLine);
+            const matchingLines = await findFoldablesAtSameLevel(editor.document, referenceLine);
             const markedLines = new Set(markerManager.getMarkedLines(editor));
             let added = 0;
             for (const line of matchingLines) {
@@ -163,51 +170,52 @@ export function activate(context: vscode.ExtensionContext) {
                 }
             }
             vscode.window.showInformationMessage(
-                `Turbo Folding: Added ${added} marker${added !== 1 ? 's' : ''} for ${matchingLines.length} same-tag line${matchingLines.length !== 1 ? 's' : ''} at same level.`
+                `Turbo Folding: Added ${added} marker${added !== 1 ? 's' : ''} for ${matchingLines.length} foldable${matchingLines.length !== 1 ? 's' : ''} at same level.`
             );
         }
     );
 
-    // Fold all other same-tag ranges at the same indentation level
-    const foldOtherSameTagsCmd = vscode.commands.registerCommand(
-        'turboFolding.foldOtherSameTags',
+    // Helper: resolve the reference line from command args
+    function resolveReferenceLine(itemOrArgs?: MarkerTreeItem | any): number | null {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) { return null; }
+        if (itemOrArgs instanceof MarkerTreeItem && itemOrArgs.line !== undefined) {
+            return itemOrArgs.line;
+        } else if (itemOrArgs && typeof itemOrArgs.lineNumber === 'number') {
+            return itemOrArgs.lineNumber - 1;
+        } else if (itemOrArgs && typeof itemOrArgs.line === 'number') {
+            return itemOrArgs.line;
+        }
+        return editor.selection.active.line;
+    }
+
+    // Helper: fold a list of lines, optionally skipping one
+    async function foldLines(lines: number[], skipLine?: number) {
+        const toFold = skipLine !== undefined ? lines.filter(l => l !== skipLine) : lines;
+        if (toFold.length > 0) {
+            await vscode.commands.executeCommand('editor.fold', {
+                selectionLines: toFold,
+                levels: 1
+            });
+        }
+        return toFold.length;
+    }
+
+    // Fold all OTHER foldables at the same level (keep current unfolded)
+    const foldOtherAtSameLevelCmd = vscode.commands.registerCommand(
+        'turboFolding.foldOtherAtSameLevel',
         async (itemOrArgs?: MarkerTreeItem | any) => {
             const editor = vscode.window.activeTextEditor;
             if (!editor) { return; }
 
-            let referenceLine: number;
-            if (itemOrArgs instanceof MarkerTreeItem && itemOrArgs.line !== undefined) {
-                referenceLine = itemOrArgs.line;
-            } else if (itemOrArgs && typeof itemOrArgs.lineNumber === 'number') {
-                referenceLine = itemOrArgs.lineNumber - 1;
-            } else if (itemOrArgs && typeof itemOrArgs.line === 'number') {
-                referenceLine = itemOrArgs.line;
-            } else {
-                referenceLine = editor.selection.active.line;
-            }
+            const referenceLine = resolveReferenceLine(itemOrArgs);
+            if (referenceLine === null) { return; }
 
-            const matchingLines = findSameTagLinesAtSameLevel(editor.document, referenceLine);
+            const matchingLines = await findFoldablesAtSameLevel(editor.document, referenceLine);
             const rawRanges = await getFoldingRanges(editor.document);
 
-            const linesToFold: number[] = [];
-            for (const line of matchingLines) {
-                if (line === referenceLine) { continue; }
-                // Find the folding range that starts at or encloses this line
-                const exact = rawRanges.find(r => r.start === line);
-                if (exact) {
-                    linesToFold.push(exact.start);
-                } else {
-                    const enclosing = rawRanges
-                        .filter(r => r.start <= line && r.end >= line)
-                        .sort((a, b) => (a.end - a.start) - (b.end - b.start));
-                    if (enclosing.length > 0) {
-                        linesToFold.push(enclosing[0].start);
-                    }
-                }
-            }
-
-            // Unfold the target
-            const targetRange = rawRanges.find(r => r.start === referenceLine) ||
+            // Unfold the target line first
+            const targetRange = rawRanges.find(r => r.start === referenceLine) ??
                 rawRanges
                     .filter(r => r.start <= referenceLine && r.end >= referenceLine)
                     .sort((a, b) => (a.end - a.start) - (b.end - b.start))[0];
@@ -217,16 +225,93 @@ export function activate(context: vscode.ExtensionContext) {
                 });
             }
 
-            if (linesToFold.length > 0) {
-                await vscode.commands.executeCommand('editor.fold', {
-                    selectionLines: linesToFold,
-                    levels: 1
-                });
-            }
+            const count = await foldLines(matchingLines, referenceLine);
+            vscode.window.showInformationMessage(
+                `Turbo Folding: Folded ${count} sibling foldable${count !== 1 ? 's' : ''} at same level.`
+            );
+        }
+    );
+
+    // Fold ALL foldables at the same level INCLUDING the current one
+    const foldAllAtSameLevelCmd = vscode.commands.registerCommand(
+        'turboFolding.foldAllAtSameLevel',
+        async (itemOrArgs?: MarkerTreeItem | any) => {
+            const editor = vscode.window.activeTextEditor;
+            if (!editor) { return; }
+
+            const referenceLine = resolveReferenceLine(itemOrArgs);
+            if (referenceLine === null) { return; }
+
+            const matchingLines = await findFoldablesAtSameLevel(editor.document, referenceLine);
+            const count = await foldLines(matchingLines);
+            vscode.window.showInformationMessage(
+                `Turbo Folding: Folded ${count} foldable${count !== 1 ? 's' : ''} at same level (including current).`
+            );
+        }
+    );
+
+    // Unfold current block recursively (expand all children)
+    const unfoldRecursivelyCmd = vscode.commands.registerCommand(
+        'turboFolding.unfoldRecursively',
+        async (itemOrArgs?: any) => {
+            const editor = vscode.window.activeTextEditor;
+            if (!editor) { return; }
+
+            const referenceLine = resolveReferenceLine(itemOrArgs);
+            if (referenceLine === null) { return; }
+
+            const rawRanges = await getFoldingRanges(editor.document);
+            const targetRange = rawRanges.find(r => r.start === referenceLine) ??
+                rawRanges
+                    .filter(r => r.start <= referenceLine && r.end >= referenceLine)
+                    .sort((a, b) => (a.end - a.start) - (b.end - b.start))[0];
+
+            await vscode.commands.executeCommand('editor.unfoldRecursively', {
+                selectionLines: [referenceLine]
+            });
 
             vscode.window.showInformationMessage(
-                `Turbo Folding: Folded ${linesToFold.length} sibling tag${linesToFold.length !== 1 ? 's' : ''}.`
+                `Turbo Folding: Unfolded recursively at line ${referenceLine + 1}.`
             );
+        }
+    );
+
+
+    // Navigate to previous foldable at the same indentation level
+    const gotoPrevSameLevelCmd = vscode.commands.registerCommand(
+        'turboFolding.gotoPrevSameLevel',
+        async () => {
+            const editor = vscode.window.activeTextEditor;
+            if (!editor) { return; }
+            const cursorLine = editor.selection.active.line;
+            const siblings = await findFoldablesAtSameLevel(editor.document, cursorLine);
+            const prev = siblings.filter(l => l < cursorLine).pop();
+            if (prev === undefined) {
+                vscode.window.showInformationMessage('Turbo Folding: No previous sibling at this level.');
+                return;
+            }
+            const pos = new vscode.Position(prev, 0);
+            editor.selection = new vscode.Selection(pos, pos);
+            editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+        }
+    );
+
+    // Navigate to next foldable at the same indentation level
+    const gotoNextSameLevelCmd = vscode.commands.registerCommand(
+        'turboFolding.gotoNextSameLevel',
+        async () => {
+            const editor = vscode.window.activeTextEditor;
+            if (!editor) { return; }
+            const cursorLine = editor.selection.active.line;
+            const siblings = await findFoldablesAtSameLevel(editor.document, cursorLine);
+            const next = siblings.find(l => l > cursorLine);
+            if (next === undefined) {
+                vscode.window.showInformationMessage('Turbo Folding: No next sibling at this level.');
+                return;
+            }
+            const pos = new vscode.Position(next, 0);
+            editor.selection = new vscode.Selection(pos, pos);
+            editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
         }
     );
 
@@ -294,25 +379,15 @@ export function activate(context: vscode.ExtensionContext) {
         const linesToFold: number[] = [];
 
         for (const markedLine of markedLines) {
-            // Find exact match starting on markedLine first
+            // Only fold ranges that START exactly on the marked line.
+            // If the marker is on a child line (no exact fold start), skip it
+            // to avoid accidentally folding the parent block.
             const exactMatches = rawRanges.filter(r => r.start === markedLine);
-            if (exactMatches.length > 0) {
-                for (const r of exactMatches) {
-                    if (cursorLine >= r.start && cursorLine <= r.end) {
-                        continue;
-                    }
-                    linesToFold.push(r.start);
+            for (const r of exactMatches) {
+                if (cursorLine >= r.start && cursorLine <= r.end) {
+                    continue;
                 }
-            } else {
-                // If no exact start match, find the innermost enclosing folding range
-                const enclosing = rawRanges.filter(r => r.start <= markedLine && r.end >= markedLine);
-                if (enclosing.length > 0) {
-                    enclosing.sort((a, b) => (a.end - a.start) - (b.end - b.start));
-                    const innermost = enclosing[0];
-                    if (!(cursorLine >= innermost.start && cursorLine <= innermost.end)) {
-                        linesToFold.push(innermost.start);
-                    }
-                }
+                linesToFold.push(r.start);
             }
         }
 
@@ -439,8 +514,12 @@ export function activate(context: vscode.ExtensionContext) {
         focusMarkerItemCmd,
         deleteMarkerItemCmd,
         refreshMarkersViewCmd,
-        addMarkerToSameTagsCmd,
-        foldOtherSameTagsCmd
+        addMarkersAtSameLevelCmd,
+        foldOtherAtSameLevelCmd,
+        foldAllAtSameLevelCmd,
+        unfoldRecursivelyCmd,
+        gotoPrevSameLevelCmd,
+        gotoNextSameLevelCmd
     );
 }
 

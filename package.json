@@ -55,12 +55,6 @@
           "id": "turboFolding.foldingManagerView",
           "name": "Folding Manager"
         }
-      ],
-      "explorer": [
-        {
-          "id": "turboFolding.foldingManagerExplorerView",
-          "name": "Turbo Folding Markers"
-        }
       ]
     },
     "commands": [
@@ -102,14 +96,34 @@
         "icon": "$(trash)"
       },
       {
-        "command": "turboFolding.addMarkerToSameTags",
-        "title": "Turbo Folding: Add Marker to This and All Same Tags at Same Level",
-        "icon": "$(tag-add)"
+        "command": "turboFolding.addMarkersAtSameLevel",
+        "title": "Turbo Folding: Add Markers to All Foldables at Same Level",
+        "icon": "$(list-selection)"
       },
       {
-        "command": "turboFolding.foldOtherSameTags",
-        "title": "Turbo Folding: Fold All Other Same Tags at This Same Level",
+        "command": "turboFolding.foldOtherAtSameLevel",
+        "title": "Turbo Folding: Fold Everything Else at Same Level (Keep This)",
         "icon": "$(fold)"
+      },
+      {
+        "command": "turboFolding.foldAllAtSameLevel",
+        "title": "Turbo Folding: Fold Everything at Same Level (Including This)",
+        "icon": "$(fold-up)"
+      },
+      {
+        "command": "turboFolding.unfoldRecursively",
+        "title": "Turbo Folding: Unfold Recursively",
+        "icon": "$(unfold)"
+      },
+      {
+        "command": "turboFolding.gotoPrevSameLevel",
+        "title": "Turbo Folding: Go to Previous Foldable at Same Level",
+        "icon": "$(arrow-up)"
+      },
+      {
+        "command": "turboFolding.gotoNextSameLevel",
+        "title": "Turbo Folding: Go to Next Foldable at Same Level",
+        "icon": "$(arrow-down)"
       }
     ],
     "keybindings": [
@@ -118,23 +132,47 @@
         "key": "ctrl+alt+f",
         "mac": "cmd+alt+f",
         "when": "editorTextFocus"
+      },
+      {
+        "command": "turboFolding.foldOtherAtSameLevel",
+        "key": "ctrl+alt+h",
+        "mac": "cmd+alt+h",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "turboFolding.unfoldRecursively",
+        "key": "ctrl+alt+u",
+        "mac": "cmd+alt+u",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "turboFolding.gotoPrevSameLevel",
+        "key": "ctrl+alt+up",
+        "mac": "cmd+alt+up",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "turboFolding.gotoNextSameLevel",
+        "key": "ctrl+alt+down",
+        "mac": "cmd+alt+down",
+        "when": "editorTextFocus"
       }
     ],
     "menus": {
       "view/title": [
         {
           "command": "turboFolding.toggleFocusOnSelect",
-          "when": "view == turboFolding.foldingManagerView || view == turboFolding.foldingManagerExplorerView",
+          "when": "view == turboFolding.foldingManagerView",
           "group": "navigation@1"
         },
         {
           "command": "turboFolding.refreshMarkersView",
-          "when": "view == turboFolding.foldingManagerView || view == turboFolding.foldingManagerExplorerView",
+          "when": "view == turboFolding.foldingManagerView",
           "group": "navigation@2"
         },
         {
           "command": "turboFolding.clearAllMarkers",
-          "when": "view == turboFolding.foldingManagerView || view == turboFolding.foldingManagerExplorerView",
+          "when": "view == turboFolding.foldingManagerView",
           "group": "navigation@3"
         }
       ],
@@ -150,14 +188,73 @@
           "group": "inline@2"
         },
         {
-          "command": "turboFolding.addMarkerToSameTags",
+          "command": "turboFolding.addMarkersAtSameLevel",
           "when": "viewItem == markerItem",
-          "group": "tagActions@1"
+          "group": "levelActions@1"
         },
         {
-          "command": "turboFolding.foldOtherSameTags",
+          "command": "turboFolding.foldOtherAtSameLevel",
           "when": "viewItem == markerItem",
-          "group": "tagActions@2"
+          "group": "levelActions@2"
+        },
+        {
+          "command": "turboFolding.foldAllAtSameLevel",
+          "when": "viewItem == markerItem",
+          "group": "levelActions@3"
+        },
+        {
+          "command": "turboFolding.unfoldRecursively",
+          "when": "viewItem == markerItem",
+          "group": "levelActions@4"
+        }
+      ],
+      "editor/context": [
+        {
+          "submenu": "turboFolding.levelMenu",
+          "group": "turboFolding@1"
+        }
+      ],
+      "turboFolding.levelMenu": [
+        {
+          "command": "turboFolding.foldOtherAtSameLevel",
+          "group": "fold@1"
+        },
+        {
+          "command": "turboFolding.foldAllAtSameLevel",
+          "group": "fold@2"
+        },
+        {
+          "command": "turboFolding.unfoldRecursively",
+          "group": "fold@3"
+        },
+        {
+          "command": "turboFolding.addMarkersAtSameLevel",
+          "group": "markers@1"
+        },
+        {
+          "command": "turboFolding.gotoPrevSameLevel",
+          "group": "navigate@1"
+        },
+        {
+          "command": "turboFolding.gotoNextSameLevel",
+          "group": "navigate@2"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "turboFolding.foldOtherAtSameLevel",
+          "when": "editorTextFocus",
+          "group": "navigation@10"
+        },
+        {
+          "command": "turboFolding.foldAllAtSameLevel",
+          "when": "editorTextFocus",
+          "group": "navigation@11"
+        },
+        {
+          "command": "turboFolding.unfoldRecursively",
+          "when": "editorTextFocus",
+          "group": "navigation@12"
         }
       ],
       "editor/gutter/context": [
@@ -188,15 +285,37 @@
           "group": "folding@3"
         },
         {
-          "command": "turboFolding.addMarkerToSameTags",
-          "group": "tagActions@1"
+          "command": "turboFolding.foldOtherAtSameLevel",
+          "group": "levelActions@1"
         },
         {
-          "command": "turboFolding.foldOtherSameTags",
-          "group": "tagActions@2"
+          "command": "turboFolding.foldAllAtSameLevel",
+          "group": "levelActions@2"
+        },
+        {
+          "command": "turboFolding.unfoldRecursively",
+          "group": "levelActions@3"
+        },
+        {
+          "command": "turboFolding.addMarkersAtSameLevel",
+          "group": "levelActions@4"
+        },
+        {
+          "command": "turboFolding.gotoPrevSameLevel",
+          "group": "levelNav@1"
+        },
+        {
+          "command": "turboFolding.gotoNextSameLevel",
+          "group": "levelNav@2"
         }
       ]
     },
+    "submenus": [
+      {
+        "id": "turboFolding.levelMenu",
+        "label": "Turbo Folding: Level Actions"
+      }
+    ],
     "configuration": {
       "title": "Turbo Folding",
       "properties": {

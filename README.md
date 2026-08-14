@@ -38,8 +38,8 @@ Instead of manually clicking tiny folding chevrons or using basic "Fold All" com
 - 16 neon & vivid palette colors assigned sequentially or randomly.
 - Markers automatically track document edits and line movements dynamically.
 
-### 🔍 2. Folding Manager (Sidebar & Explorer)
-- Dedicated Activity Bar view and Explorer panel listing all marked lines in the active document.
+### 🔍 2. Folding Manager
+- Dedicated Activity Bar view listing all marked lines in the active document.
 - One-click jump to any marker.
 - Inline actions: **Focus Marker** (unfold target & fold others) and **Delete Marker**.
 - **Focus on Select** toggle: when turned ON, clicking any marker in the tree view instantly isolates and opens that block while folding all other marked blocks.
