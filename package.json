@@ -124,6 +124,11 @@
         "command": "turboFolding.gotoNextSameLevel",
         "title": "Turbo Folding: Go to Next Foldable at Same Level",
         "icon": "$(arrow-down)"
+      },
+      {
+        "command": "turboFolding.toggleTreeView",
+        "title": "Turbo Folding: Toggle Tree View",
+        "icon": "$(list-tree)"
       }
     ],
     "keybindings": [
@@ -174,6 +179,11 @@
           "command": "turboFolding.clearAllMarkers",
           "when": "view == turboFolding.foldingManagerView",
           "group": "navigation@3"
+        },
+        {
+          "command": "turboFolding.toggleTreeView",
+          "when": "view == turboFolding.foldingManagerView",
+          "group": "navigation@4"
         }
       ],
       "view/item/context": [

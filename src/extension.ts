@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { getFoldingRanges, computeFoldingDepths, findSameTagLinesAtSameLevel, findFoldablesAtSameLevel } from './foldingManager';
+import { getFoldingRanges, computeFoldingDepths, findSameTagLinesAtSameLevel, findFoldablesAtSameLevel, getDocumentSymbols, flattenSymbols, resolveSemanticInfo } from './foldingManager';
 import { MarkerManager } from './markerManager';
 import { FoldingTreeDataProvider, MarkerTreeItem } from './foldingTreeView';
 
@@ -26,6 +26,23 @@ export function activate(context: vscode.ExtensionContext) {
         sidebarTreeView.description = desc;
     };
     updateViewDescription();
+
+    // Tree View Mode state
+    let treeViewMode = context.workspaceState.get<boolean>('turboFolding.treeViewMode', false);
+    treeDataProvider.setTreeViewMode(treeViewMode);
+    vscode.commands.executeCommand('setContext', 'turboFolding.treeViewActive', treeViewMode);
+
+
+    // Toggle Tree View Mode
+    const toggleTreeViewCmd = vscode.commands.registerCommand('turboFolding.toggleTreeView', async () => {
+        treeViewMode = !treeViewMode;
+        await context.workspaceState.update('turboFolding.treeViewMode', treeViewMode);
+        await vscode.commands.executeCommand('setContext', 'turboFolding.treeViewActive', treeViewMode);
+        treeDataProvider.setTreeViewMode(treeViewMode);
+        vscode.window.showInformationMessage(
+            `Turbo Folding: Tree View is now ${treeViewMode ? 'ENABLED' : 'DISABLED'}`
+        );
+    });
 
     // Status bar navigation buttons
     const prevStatusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 95);
@@ -142,7 +159,7 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
-    // Add markers to all foldables at the same indentation level (language-agnostic)
+    // Add markers to foldables at the same indentation level (matches same tag name, function, class, etc. if semantic info is available)
     const addMarkersAtSameLevelCmd = vscode.commands.registerCommand(
         'turboFolding.addMarkersAtSameLevel',
         async (itemOrArgs?: MarkerTreeItem | any) => {
@@ -160,18 +177,34 @@ export function activate(context: vscode.ExtensionContext) {
                 referenceLine = editor.selection.active.line;
             }
 
-            const matchingLines = await findFoldablesAtSameLevel(editor.document, referenceLine);
-            const markedLines = new Set(markerManager.getMarkedLines(editor));
+            // Detect semantic description for informative feedback
+            const rawSymbols = await getDocumentSymbols(editor.document);
+            const symbols = flattenSymbols(rawSymbols);
+            const refSemantic = resolveSemanticInfo(editor.document, referenceLine, symbols);
+
+            const matchingLines = await findFoldablesAtSameLevel(editor.document, referenceLine, true);
             let added = 0;
             for (const line of matchingLines) {
-                if (!markedLines.has(line)) {
-                    markerManager.toggleMarker(editor, line);
-                    added++;
+                // If item already exists with the same line, do not add it again
+                if (!markerManager.hasMarker(editor, line)) {
+                    if (markerManager.addMarker(editor, line)) {
+                        added++;
+                    }
                 }
             }
-            vscode.window.showInformationMessage(
-                `Turbo Folding: Added ${added} marker${added !== 1 ? 's' : ''} for ${matchingLines.length} foldable${matchingLines.length !== 1 ? 's' : ''} at same level.`
-            );
+
+            const alreadyMarked = matchingLines.length - added;
+            const typeDesc = refSemantic ? ` [${refSemantic.displayName}]` : '';
+
+            if (added > 0) {
+                vscode.window.showInformationMessage(
+                    `Turbo Folding: Added ${added} marker${added !== 1 ? 's' : ''}${typeDesc} for ${matchingLines.length} foldable${matchingLines.length !== 1 ? 's' : ''} at same level${alreadyMarked > 0 ? ` (${alreadyMarked} already existed)` : ''}.`
+                );
+            } else {
+                vscode.window.showInformationMessage(
+                    `Turbo Folding: All ${matchingLines.length} foldable${matchingLines.length !== 1 ? 's' : ''}${typeDesc} at this level are already marked.`
+                );
+            }
         }
     );
 
@@ -519,7 +552,8 @@ export function activate(context: vscode.ExtensionContext) {
         foldAllAtSameLevelCmd,
         unfoldRecursivelyCmd,
         gotoPrevSameLevelCmd,
-        gotoNextSameLevelCmd
+        gotoNextSameLevelCmd,
+        toggleTreeViewCmd
     );
 }
 

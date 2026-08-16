@@ -126,6 +126,31 @@ class MarkerManager {
         }
         await this.context.workspaceState.update('turboFolding.savedMarkers', data);
     }
+    hasMarker(docUriOrEditor, line) {
+        const docUri = typeof docUriOrEditor === "string" ? docUriOrEditor : docUriOrEditor.document.uri.toString();
+        const markerMap = this.markers.get(docUri);
+        return markerMap ? markerMap.has(line) : false;
+    }
+    addMarker(editor, lineNumber) {
+        const docUri = editor.document.uri.toString();
+        if (!this.markers.has(docUri)) {
+            this.markers.set(docUri, new Map());
+        }
+        const markerMap = this.markers.get(docUri);
+        let lineToAdd = lineNumber !== undefined ? lineNumber : editor.selection.active.line;
+        lineToAdd = Math.max(0, Math.min(lineToAdd, editor.document.lineCount - 1));
+        // If marker already exists with the same line, don't add it again
+        if (markerMap.has(lineToAdd)) {
+            return false;
+        }
+        const lineText = editor.document.lineAt(lineToAdd).text.trim();
+        const color = this.assignColor(docUri);
+        markerMap.set(lineToAdd, { line: lineToAdd, text: lineText, color });
+        this.saveMarkers();
+        this.updateDecorations(editor, false);
+        this._onDidChangeMarkers.fire(editor.document.uri);
+        return true;
+    }
     toggleMarker(editor, lineNumber) {
         const docUri = editor.document.uri.toString();
         if (!this.markers.has(docUri)) {
