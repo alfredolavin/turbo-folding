@@ -15,9 +15,9 @@ class MarkerTreeItem extends vscode.TreeItem {
     nestedChildren = [];
     parent;
     constructor(documentUri, marker, depth = 1, applyIndentation = false) {
-        // Indentation: 1 space for each level up to level 8
+        // Arrow indentation: "->" with 2 extra "-" at the beginning for each folding level up to level 8
         const clampedLevel = Math.min(Math.max(1, depth), 8);
-        const indentPrefix = applyIndentation ? '\u00A0'.repeat(clampedLevel) : '';
+        const indentPrefix = applyIndentation ? `${'-'.repeat(2 * (clampedLevel - 1))}-> ` : '';
         super(`${indentPrefix}Line ${marker.line + 1}`, vscode.TreeItemCollapsibleState.None);
         this.line = marker.line;
         this.documentUri = documentUri;
@@ -155,7 +155,7 @@ class FoldingTreeDataProvider {
         const rawRanges = await (0, foldingManager_1.getFoldingRanges)(editor.document);
         const rangeInfo = (0, foldingManager_1.computeFoldingDepths)(rawRanges);
         if (!this._treeViewMode) {
-            // ── Flat list with 1 space indentation per level up to level 8 ──
+            // ── Flat list with arrow indentation per level up to level 8 ──
             return markers.map(m => {
                 const depth = resolveMarkerDepth(m.line, rangeInfo, editor.document);
                 return new MarkerTreeItem(editor.document.uri, m, depth, true);
@@ -169,7 +169,7 @@ class FoldingTreeDataProvider {
     // -----------------------------------------------------------------------
     _buildTreeItems(uri, markers, document, rawRanges, rangeInfo) {
         if (rawRanges.length === 0 || markers.length <= 1) {
-            // No folding info or single marker — return flat list of marker items with indentation
+            // No folding info or single marker — return flat list of marker items with arrow indentation
             return markers.map(m => {
                 const depth = resolveMarkerDepth(m.line, rangeInfo, document);
                 return new MarkerTreeItem(uri, m, depth, true);

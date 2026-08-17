@@ -4,7 +4,7 @@
   "publisher": "alfredolavin",
   "author": "Alfredo Alex Lavín Caldas <alfredolavin@gmail.com>",
   "description": "Smart, tag-aware code folding, vivid gutter markers, auto-folding modes, and visual Folding Manager for VS Code.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "license": "MIT",
   "icon": "icon.png",
   "repository": {
