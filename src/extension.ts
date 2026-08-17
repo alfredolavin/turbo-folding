@@ -21,17 +21,20 @@ export function activate(context: vscode.ExtensionContext) {
     let focusOnSelect = context.workspaceState.get<boolean>('turboFolding.focusOnSelect', false);
     vscode.commands.executeCommand('setContext', 'turboFolding.focusOnSelectActive', focusOnSelect);
 
-    const updateViewDescription = () => {
-        const desc = focusOnSelect ? 'Focus Mode: ON' : '';
-        sidebarTreeView.description = desc;
-    };
-    updateViewDescription();
-
     // Tree View Mode state
     let treeViewMode = context.workspaceState.get<boolean>('turboFolding.treeViewMode', false);
     treeDataProvider.setTreeViewMode(treeViewMode);
     vscode.commands.executeCommand('setContext', 'turboFolding.treeViewActive', treeViewMode);
 
+    const updateViewDescription = () => {
+        const parts: string[] = [];
+        parts.push(treeViewMode ? 'Tree View' : 'Flat List');
+        if (focusOnSelect) {
+            parts.push('Focus Mode: ON');
+        }
+        sidebarTreeView.description = parts.join(' | ');
+    };
+    updateViewDescription();
 
     // Toggle Tree View Mode
     const toggleTreeViewCmd = vscode.commands.registerCommand('turboFolding.toggleTreeView', async () => {
@@ -39,9 +42,14 @@ export function activate(context: vscode.ExtensionContext) {
         await context.workspaceState.update('turboFolding.treeViewMode', treeViewMode);
         await vscode.commands.executeCommand('setContext', 'turboFolding.treeViewActive', treeViewMode);
         treeDataProvider.setTreeViewMode(treeViewMode);
+        updateViewDescription();
         vscode.window.showInformationMessage(
-            `Turbo Folding: Tree View is now ${treeViewMode ? 'ENABLED' : 'DISABLED'}`
+            `Turbo Folding: Switched to ${treeViewMode ? 'Tree View' : 'Flat List'}`
         );
+    });
+
+    const toggleTreeViewFlatCmd = vscode.commands.registerCommand('turboFolding.toggleTreeViewFlat', async () => {
+        await vscode.commands.executeCommand('turboFolding.toggleTreeView');
     });
 
     // Status bar navigation buttons
@@ -309,7 +317,6 @@ export function activate(context: vscode.ExtensionContext) {
         }
     );
 
-
     // Navigate to previous foldable at the same indentation level
     const gotoPrevSameLevelCmd = vscode.commands.registerCommand(
         'turboFolding.gotoPrevSameLevel',
@@ -497,7 +504,6 @@ export function activate(context: vscode.ExtensionContext) {
         markerManager.updateDecorations(editor, false);
     }
 
-
     // Event Listeners
     context.subscriptions.push(
         vscode.workspace.onDidChangeTextDocument(event => {
@@ -553,7 +559,8 @@ export function activate(context: vscode.ExtensionContext) {
         unfoldRecursivelyCmd,
         gotoPrevSameLevelCmd,
         gotoNextSameLevelCmd,
-        toggleTreeViewCmd
+        toggleTreeViewCmd,
+        toggleTreeViewFlatCmd
     );
 }
 

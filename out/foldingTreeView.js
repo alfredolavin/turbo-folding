@@ -5,21 +5,26 @@ const vscode = require("vscode");
 const markerManager_1 = require("./markerManager");
 const foldingManager_1 = require("./foldingManager");
 // ---------------------------------------------------------------------------
-// MarkerTreeItem — leaf or parent node in the folding markers hierarchy
+// MarkerTreeItem — leaf or parent node in the folding markers list / tree
 // ---------------------------------------------------------------------------
 class MarkerTreeItem extends vscode.TreeItem {
     line;
     documentUri;
     marker;
+    depth;
     nestedChildren = [];
     parent;
-    constructor(documentUri, marker) {
-        super(`Line ${marker.line + 1}`, vscode.TreeItemCollapsibleState.None);
+    constructor(documentUri, marker, depth = 1, applyIndentation = false) {
+        // Indentation: 1 space for each level up to level 8
+        const clampedLevel = Math.min(Math.max(1, depth), 8);
+        const indentPrefix = applyIndentation ? '\u00A0'.repeat(clampedLevel) : '';
+        super(`${indentPrefix}Line ${marker.line + 1}`, vscode.TreeItemCollapsibleState.None);
         this.line = marker.line;
         this.documentUri = documentUri;
         this.marker = marker;
+        this.depth = depth;
         this.description = marker.text && marker.text.length > 0 ? marker.text : '(empty line)';
-        this.tooltip = `Line ${marker.line + 1}: ${marker.text || '(empty line)'}\nColor: ${marker.color}\nClick to jump to line`;
+        this.tooltip = `Line ${marker.line + 1} (Level ${depth}): ${marker.text || '(empty line)'}\nColor: ${marker.color}\nClick to jump to line`;
         this.iconPath = (0, markerManager_1.createSvgDataUri)(marker.color);
         this.contextValue = 'markerItem';
         this.command = {
@@ -38,7 +43,7 @@ class MarkerTreeItem extends vscode.TreeItem {
             ? vscode.TreeItemCollapsibleState.Expanded
             : vscode.TreeItemCollapsibleState.None;
         if (children.length > 0) {
-            this.tooltip = `Line ${this.line + 1}: ${this.marker.text || '(empty line)'}\nColor: ${this.marker.color}\n${children.length} nested marker${children.length !== 1 ? 's' : ''}\nClick to jump to line`;
+            this.tooltip = `Line ${this.line + 1} (Level ${this.depth}): ${this.marker.text || '(empty line)'}\nColor: ${this.marker.color}\n${children.length} nested marker${children.length !== 1 ? 's' : ''}\nClick to jump to line`;
         }
     }
 }
@@ -69,6 +74,29 @@ function getMarkerFoldingScope(markerLine, rawRanges) {
         return { start: best.start, end: best.end };
     }
     return null;
+}
+/**
+ * Resolves the depth level of a given line from folding ranges or indentation fallback.
+ */
+function resolveMarkerDepth(markerLine, rangeInfo, document) {
+    if (rangeInfo.length > 0) {
+        const exact = rangeInfo.find(r => r.startLine === markerLine);
+        if (exact) {
+            return exact.depth;
+        }
+        const enclosing = rangeInfo
+            .filter(r => r.startLine <= markerLine && r.endLine >= markerLine)
+            .sort((a, b) => (a.endLine - a.startLine) - (b.endLine - b.startLine));
+        if (enclosing.length > 0) {
+            return enclosing[0].depth;
+        }
+    }
+    if (markerLine >= 0 && markerLine < document.lineCount) {
+        const lineText = document.lineAt(markerLine).text;
+        const indent = lineText.length - lineText.trimStart().length;
+        return Math.max(1, Math.floor(indent / 2) + 1);
+    }
+    return 1;
 }
 // ---------------------------------------------------------------------------
 // FoldingTreeDataProvider
@@ -124,26 +152,34 @@ class FoldingTreeDataProvider {
             placeholder.description = 'Toggle marker on line to add';
             return [placeholder];
         }
+        const rawRanges = await (0, foldingManager_1.getFoldingRanges)(editor.document);
+        const rangeInfo = (0, foldingManager_1.computeFoldingDepths)(rawRanges);
         if (!this._treeViewMode) {
-            // ── Flat list (original behaviour) ─────────────────────────────
-            return markers.map(m => new MarkerTreeItem(editor.document.uri, m));
+            // ── Flat list with 1 space indentation per level up to level 8 ──
+            return markers.map(m => {
+                const depth = resolveMarkerDepth(m.line, rangeInfo, editor.document);
+                return new MarkerTreeItem(editor.document.uri, m, depth, true);
+            });
         }
         // ── Hierarchical Tree view mode ────────────────────────────────────
-        return this._buildTreeItems(editor.document.uri, markers, editor.document);
+        return this._buildTreeItems(editor.document.uri, markers, editor.document, rawRanges, rangeInfo);
     }
     // -----------------------------------------------------------------------
     // Tree-building helpers
     // -----------------------------------------------------------------------
-    async _buildTreeItems(uri, markers, document) {
-        const rawRanges = await (0, foldingManager_1.getFoldingRanges)(document);
+    _buildTreeItems(uri, markers, document, rawRanges, rangeInfo) {
         if (rawRanges.length === 0 || markers.length <= 1) {
-            // No folding info or single marker — return flat list of marker items
-            return markers.map(m => new MarkerTreeItem(uri, m));
+            // No folding info or single marker — return flat list of marker items with indentation
+            return markers.map(m => {
+                const depth = resolveMarkerDepth(m.line, rangeInfo, document);
+                return new MarkerTreeItem(uri, m, depth, true);
+            });
         }
         // 1. Build a map: markerLine → MarkerTreeItem
         const itemByLine = new Map();
         for (const m of markers) {
-            itemByLine.set(m.line, new MarkerTreeItem(uri, m));
+            const depth = resolveMarkerDepth(m.line, rangeInfo, document);
+            itemByLine.set(m.line, new MarkerTreeItem(uri, m, depth, false));
         }
         const markerLines = markers.map(m => m.line).sort((a, b) => a - b);
         // 2. Precompute the effective folding scope for each marker

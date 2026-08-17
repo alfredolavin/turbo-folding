@@ -4,7 +4,7 @@
   "publisher": "alfredolavin",
   "author": "Alfredo Alex Lavín Caldas <alfredolavin@gmail.com>",
   "description": "Smart, tag-aware code folding, vivid gutter markers, auto-folding modes, and visual Folding Manager for VS Code.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "MIT",
   "icon": "icon.png",
   "repository": {
@@ -127,8 +127,13 @@
       },
       {
         "command": "turboFolding.toggleTreeView",
-        "title": "Turbo Folding: Toggle Tree View",
+        "title": "Turbo Folding: Switch to Tree View",
         "icon": "$(list-tree)"
+      },
+      {
+        "command": "turboFolding.toggleTreeViewFlat",
+        "title": "Turbo Folding: Switch to Flat List",
+        "icon": "$(list-flat)"
       }
     ],
     "keybindings": [
@@ -182,7 +187,12 @@
         },
         {
           "command": "turboFolding.toggleTreeView",
-          "when": "view == turboFolding.foldingManagerView",
+          "when": "view == turboFolding.foldingManagerView && !turboFolding.treeViewActive",
+          "group": "navigation@4"
+        },
+        {
+          "command": "turboFolding.toggleTreeViewFlat",
+          "when": "view == turboFolding.foldingManagerView && turboFolding.treeViewActive",
           "group": "navigation@4"
         }
       ],

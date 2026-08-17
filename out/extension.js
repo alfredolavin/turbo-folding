@@ -19,22 +19,30 @@ function activate(context) {
     // Focus on select state
     let focusOnSelect = context.workspaceState.get('turboFolding.focusOnSelect', false);
     vscode.commands.executeCommand('setContext', 'turboFolding.focusOnSelectActive', focusOnSelect);
-    const updateViewDescription = () => {
-        const desc = focusOnSelect ? 'Focus Mode: ON' : '';
-        sidebarTreeView.description = desc;
-    };
-    updateViewDescription();
     // Tree View Mode state
     let treeViewMode = context.workspaceState.get('turboFolding.treeViewMode', false);
     treeDataProvider.setTreeViewMode(treeViewMode);
     vscode.commands.executeCommand('setContext', 'turboFolding.treeViewActive', treeViewMode);
+    const updateViewDescription = () => {
+        const parts = [];
+        parts.push(treeViewMode ? 'Tree View' : 'Flat List');
+        if (focusOnSelect) {
+            parts.push('Focus Mode: ON');
+        }
+        sidebarTreeView.description = parts.join(' | ');
+    };
+    updateViewDescription();
     // Toggle Tree View Mode
     const toggleTreeViewCmd = vscode.commands.registerCommand('turboFolding.toggleTreeView', async () => {
         treeViewMode = !treeViewMode;
         await context.workspaceState.update('turboFolding.treeViewMode', treeViewMode);
         await vscode.commands.executeCommand('setContext', 'turboFolding.treeViewActive', treeViewMode);
         treeDataProvider.setTreeViewMode(treeViewMode);
-        vscode.window.showInformationMessage(`Turbo Folding: Tree View is now ${treeViewMode ? 'ENABLED' : 'DISABLED'}`);
+        updateViewDescription();
+        vscode.window.showInformationMessage(`Turbo Folding: Switched to ${treeViewMode ? 'Tree View' : 'Flat List'}`);
+    });
+    const toggleTreeViewFlatCmd = vscode.commands.registerCommand('turboFolding.toggleTreeViewFlat', async () => {
+        await vscode.commands.executeCommand('turboFolding.toggleTreeView');
     });
     // Status bar navigation buttons
     const prevStatusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 95);
@@ -460,7 +468,7 @@ function activate(context) {
             }
             treeDataProvider.refresh();
         }
-    }), toggleAutoModeCmd, toggleMarkerCmd, clearAllMarkersCmd, foldMarkedExceptCurrentCmd, toggleFocusOnSelectCmd, selectMarkerFromViewCmd, focusMarkerItemCmd, deleteMarkerItemCmd, refreshMarkersViewCmd, addMarkersAtSameLevelCmd, foldOtherAtSameLevelCmd, foldAllAtSameLevelCmd, unfoldRecursivelyCmd, gotoPrevSameLevelCmd, gotoNextSameLevelCmd, toggleTreeViewCmd);
+    }), toggleAutoModeCmd, toggleMarkerCmd, clearAllMarkersCmd, foldMarkedExceptCurrentCmd, toggleFocusOnSelectCmd, selectMarkerFromViewCmd, focusMarkerItemCmd, deleteMarkerItemCmd, refreshMarkersViewCmd, addMarkersAtSameLevelCmd, foldOtherAtSameLevelCmd, foldAllAtSameLevelCmd, unfoldRecursivelyCmd, gotoPrevSameLevelCmd, gotoNextSameLevelCmd, toggleTreeViewCmd, toggleTreeViewFlatCmd);
 }
 function deactivate() { }
 //# sourceMappingURL=extension.js.map
