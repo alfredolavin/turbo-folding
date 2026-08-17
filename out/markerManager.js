@@ -23,7 +23,12 @@ exports.DEFAULT_VIVID_PALETTE = [
 ];
 function createSvgDataUri(color) {
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">` +
-        `<circle cx="8" cy="8" r="5" fill="${color}" stroke="rgba(0,0,0,0.25)" stroke-width="0.75"/>` +
+        `<defs>` +
+        `<filter id="tf-shadow" x="-30%" y="-30%" width="160%" height="160%">` +
+        `<feDropShadow dx="0" dy="0.75" stdDeviation="0.75" flood-color="#000000" flood-opacity="0.35"/>` +
+        `</filter>` +
+        `</defs>` +
+        `<circle cx="8" cy="8" r="4.5" fill="${color}" stroke="rgba(0,0,0,0.25)" stroke-width="0.75" filter="url(#tf-shadow)"/>` +
         `</svg>`;
     return vscode.Uri.parse(`data:image/svg+xml;utf8,${encodeURIComponent(svg)}`);
 }

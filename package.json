@@ -4,7 +4,7 @@
   "publisher": "alfredolavin",
   "author": "Alfredo Alex Lavín Caldas <alfredolavin@gmail.com>",
   "description": "Smart, tag-aware code folding, vivid gutter markers, auto-folding modes, and visual Folding Manager for VS Code.",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "license": "MIT",
   "icon": "icon.png",
   "repository": {
@@ -134,6 +134,11 @@
         "command": "turboFolding.toggleTreeViewFlat",
         "title": "Turbo Folding: Switch to Flat List",
         "icon": "$(list-flat)"
+      },
+      {
+        "command": "turboFolding.toggleLineNumbers",
+        "title": "Turbo Folding: Toggle Line Numbers",
+        "icon": "$(symbol-numeric)"
       }
     ],
     "keybindings": [
@@ -194,6 +199,11 @@
           "command": "turboFolding.toggleTreeViewFlat",
           "when": "view == turboFolding.foldingManagerView && turboFolding.treeViewActive",
           "group": "navigation@4"
+        },
+        {
+          "command": "turboFolding.toggleLineNumbers",
+          "when": "view == turboFolding.foldingManagerView",
+          "group": "navigation@5"
         }
       ],
       "view/item/context": [
@@ -392,6 +402,11 @@
           "type": "number",
           "default": 1,
           "description": "Folding depth level for sectors below the cursor position."
+        },
+        "turboFolding.showLineNumbers": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show line numbers (e.g. :123) in the Folding Manager view."
         }
       }
     }

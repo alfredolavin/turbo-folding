@@ -26,6 +26,11 @@ export function activate(context: vscode.ExtensionContext) {
     treeDataProvider.setTreeViewMode(treeViewMode);
     vscode.commands.executeCommand('setContext', 'turboFolding.treeViewActive', treeViewMode);
 
+    // Show Line Numbers state
+    let showLineNumbers = context.workspaceState.get<boolean>('turboFolding.showLineNumbers', true);
+    treeDataProvider.setShowLineNumbers(showLineNumbers);
+    vscode.commands.executeCommand('setContext', 'turboFolding.showLineNumbersActive', showLineNumbers);
+
     const updateViewDescription = () => {
         const parts: string[] = [];
         parts.push(treeViewMode ? 'Tree View' : 'Flat List');
@@ -50,6 +55,17 @@ export function activate(context: vscode.ExtensionContext) {
 
     const toggleTreeViewFlatCmd = vscode.commands.registerCommand('turboFolding.toggleTreeViewFlat', async () => {
         await vscode.commands.executeCommand('turboFolding.toggleTreeView');
+    });
+
+    // Toggle Line Numbers Mode
+    const toggleLineNumbersCmd = vscode.commands.registerCommand('turboFolding.toggleLineNumbers', async () => {
+        showLineNumbers = !showLineNumbers;
+        await context.workspaceState.update('turboFolding.showLineNumbers', showLineNumbers);
+        await vscode.commands.executeCommand('setContext', 'turboFolding.showLineNumbersActive', showLineNumbers);
+        treeDataProvider.setShowLineNumbers(showLineNumbers);
+        vscode.window.showInformationMessage(
+            `Turbo Folding: Line Numbers ${showLineNumbers ? 'SHOWN' : 'HIDDEN'}`
+        );
     });
 
     // Status bar navigation buttons
@@ -560,7 +576,8 @@ export function activate(context: vscode.ExtensionContext) {
         gotoPrevSameLevelCmd,
         gotoNextSameLevelCmd,
         toggleTreeViewCmd,
-        toggleTreeViewFlatCmd
+        toggleTreeViewFlatCmd,
+        toggleLineNumbersCmd
     );
 }
 

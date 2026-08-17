@@ -23,6 +23,10 @@ function activate(context) {
     let treeViewMode = context.workspaceState.get('turboFolding.treeViewMode', false);
     treeDataProvider.setTreeViewMode(treeViewMode);
     vscode.commands.executeCommand('setContext', 'turboFolding.treeViewActive', treeViewMode);
+    // Show Line Numbers state
+    let showLineNumbers = context.workspaceState.get('turboFolding.showLineNumbers', true);
+    treeDataProvider.setShowLineNumbers(showLineNumbers);
+    vscode.commands.executeCommand('setContext', 'turboFolding.showLineNumbersActive', showLineNumbers);
     const updateViewDescription = () => {
         const parts = [];
         parts.push(treeViewMode ? 'Tree View' : 'Flat List');
@@ -43,6 +47,14 @@ function activate(context) {
     });
     const toggleTreeViewFlatCmd = vscode.commands.registerCommand('turboFolding.toggleTreeViewFlat', async () => {
         await vscode.commands.executeCommand('turboFolding.toggleTreeView');
+    });
+    // Toggle Line Numbers Mode
+    const toggleLineNumbersCmd = vscode.commands.registerCommand('turboFolding.toggleLineNumbers', async () => {
+        showLineNumbers = !showLineNumbers;
+        await context.workspaceState.update('turboFolding.showLineNumbers', showLineNumbers);
+        await vscode.commands.executeCommand('setContext', 'turboFolding.showLineNumbersActive', showLineNumbers);
+        treeDataProvider.setShowLineNumbers(showLineNumbers);
+        vscode.window.showInformationMessage(`Turbo Folding: Line Numbers ${showLineNumbers ? 'SHOWN' : 'HIDDEN'}`);
     });
     // Status bar navigation buttons
     const prevStatusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 95);
@@ -468,7 +480,7 @@ function activate(context) {
             }
             treeDataProvider.refresh();
         }
-    }), toggleAutoModeCmd, toggleMarkerCmd, clearAllMarkersCmd, foldMarkedExceptCurrentCmd, toggleFocusOnSelectCmd, selectMarkerFromViewCmd, focusMarkerItemCmd, deleteMarkerItemCmd, refreshMarkersViewCmd, addMarkersAtSameLevelCmd, foldOtherAtSameLevelCmd, foldAllAtSameLevelCmd, unfoldRecursivelyCmd, gotoPrevSameLevelCmd, gotoNextSameLevelCmd, toggleTreeViewCmd, toggleTreeViewFlatCmd);
+    }), toggleAutoModeCmd, toggleMarkerCmd, clearAllMarkersCmd, foldMarkedExceptCurrentCmd, toggleFocusOnSelectCmd, selectMarkerFromViewCmd, focusMarkerItemCmd, deleteMarkerItemCmd, refreshMarkersViewCmd, addMarkersAtSameLevelCmd, foldOtherAtSameLevelCmd, foldAllAtSameLevelCmd, unfoldRecursivelyCmd, gotoPrevSameLevelCmd, gotoNextSameLevelCmd, toggleTreeViewCmd, toggleTreeViewFlatCmd, toggleLineNumbersCmd);
 }
 function deactivate() { }
 //# sourceMappingURL=extension.js.map

@@ -14,18 +14,37 @@ class MarkerTreeItem extends vscode.TreeItem {
     depth;
     nestedChildren = [];
     parent;
-    constructor(documentUri, marker, depth = 1, applyIndentation = false, minDepth = 1) {
+    constructor(documentUri, marker, depth = 1, applyIndentation = false, minDepth = 1, showLineNumber = true) {
         // Arrow indentation: subtract smallest level from all nodes (depth - minDepth + 1) up to level 8
         const relativeLevel = Math.max(1, depth - minDepth + 1);
         const clampedLevel = Math.min(relativeLevel, 8);
         const indentPrefix = applyIndentation ? `${'-'.repeat(2 * (clampedLevel - 1))}-> ` : '';
-        super(`${indentPrefix}Line ${marker.line + 1}`, vscode.TreeItemCollapsibleState.None);
+        const linePrefix = showLineNumber ? `:${marker.line + 1}` : '';
+        const prefix = (indentPrefix + linePrefix).trimEnd();
+        const previewText = marker.text && marker.text.length > 0 ? marker.text : '(empty line)';
+        // Combine prefix with preview text and bold the preview text via highlights
+        let fullLabel;
+        let previewStart;
+        let previewEnd;
+        if (prefix.length > 0) {
+            fullLabel = `${prefix}  ${previewText}`;
+            previewStart = prefix.length + 2;
+            previewEnd = fullLabel.length;
+        }
+        else {
+            fullLabel = previewText;
+            previewStart = 0;
+            previewEnd = fullLabel.length;
+        }
+        super({
+            label: fullLabel,
+            highlights: [[previewStart, previewEnd]]
+        }, vscode.TreeItemCollapsibleState.None);
         this.line = marker.line;
         this.documentUri = documentUri;
         this.marker = marker;
         this.depth = depth;
-        this.description = marker.text && marker.text.length > 0 ? marker.text : '(empty line)';
-        this.tooltip = `Line ${marker.line + 1} (Level ${depth}): ${marker.text || '(empty line)'}\nColor: ${marker.color}\nClick to jump to line`;
+        this.tooltip = `:${marker.line + 1} (Level ${depth}): ${previewText}\nColor: ${marker.color}\nClick to jump to line`;
         this.iconPath = (0, markerManager_1.createSvgDataUri)(marker.color);
         this.contextValue = 'markerItem';
         this.command = {
@@ -44,7 +63,8 @@ class MarkerTreeItem extends vscode.TreeItem {
             ? vscode.TreeItemCollapsibleState.Expanded
             : vscode.TreeItemCollapsibleState.None;
         if (children.length > 0) {
-            this.tooltip = `Line ${this.line + 1} (Level ${this.depth}): ${this.marker.text || '(empty line)'}\nColor: ${this.marker.color}\n${children.length} nested marker${children.length !== 1 ? 's' : ''}\nClick to jump to line`;
+            const previewText = this.marker.text && this.marker.text.length > 0 ? this.marker.text : '(empty line)';
+            this.tooltip = `:${this.line + 1} (Level ${this.depth}): ${previewText}\nColor: ${this.marker.color}\n${children.length} nested marker${children.length !== 1 ? 's' : ''}\nClick to jump to line`;
         }
     }
 }
@@ -107,6 +127,7 @@ class FoldingTreeDataProvider {
     onDidChangeTreeData = this._onDidChangeTreeData.event;
     markerManager;
     _treeViewMode = false;
+    _showLineNumbers = true;
     constructor(markerManager) {
         this.markerManager = markerManager;
         this.markerManager.onDidChangeMarkers(() => {
@@ -121,6 +142,13 @@ class FoldingTreeDataProvider {
     }
     setTreeViewMode(value) {
         this._treeViewMode = value;
+        this.refresh();
+    }
+    get showLineNumbers() {
+        return this._showLineNumbers;
+    }
+    setShowLineNumbers(value) {
+        this._showLineNumbers = value;
         this.refresh();
     }
     refresh() {
@@ -172,7 +200,7 @@ class FoldingTreeDataProvider {
             // ── Flat list with arrow indentation relative to minDepth ──
             return markers.map(m => {
                 const depth = markerDepths.get(m.line) ?? 1;
-                return new MarkerTreeItem(editor.document.uri, m, depth, true, minDepth);
+                return new MarkerTreeItem(editor.document.uri, m, depth, true, minDepth, this._showLineNumbers);
             });
         }
         // ── Hierarchical Tree view mode ────────────────────────────────────
@@ -186,14 +214,14 @@ class FoldingTreeDataProvider {
             // No folding info or single marker — return flat list of marker items with relative arrow indentation
             return markers.map(m => {
                 const depth = markerDepths.get(m.line) ?? 1;
-                return new MarkerTreeItem(uri, m, depth, true, minDepth);
+                return new MarkerTreeItem(uri, m, depth, true, minDepth, this._showLineNumbers);
             });
         }
         // 1. Build a map: markerLine → MarkerTreeItem
         const itemByLine = new Map();
         for (const m of markers) {
             const depth = markerDepths.get(m.line) ?? 1;
-            itemByLine.set(m.line, new MarkerTreeItem(uri, m, depth, false, minDepth));
+            itemByLine.set(m.line, new MarkerTreeItem(uri, m, depth, false, minDepth, this._showLineNumbers));
         }
         const markerLines = markers.map(m => m.line).sort((a, b) => a - b);
         // 2. Precompute the effective folding scope for each marker
