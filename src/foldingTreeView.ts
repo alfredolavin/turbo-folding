@@ -17,10 +17,12 @@ export class MarkerTreeItem extends vscode.TreeItem {
         documentUri: vscode.Uri,
         marker: MarkerItem,
         depth: number = 1,
-        applyIndentation: boolean = false
+        applyIndentation: boolean = false,
+        minDepth: number = 1
     ) {
-        // Arrow indentation: "->" with 2 extra "-" at the beginning for each folding level up to level 8
-        const clampedLevel = Math.min(Math.max(1, depth), 8);
+        // Arrow indentation: subtract smallest level from all nodes (depth - minDepth + 1) up to level 8
+        const relativeLevel = Math.max(1, depth - minDepth + 1);
+        const clampedLevel = Math.min(relativeLevel, 8);
         const indentPrefix = applyIndentation ? `${'-'.repeat(2 * (clampedLevel - 1))}-> ` : '';
         super(`${indentPrefix}Line ${marker.line + 1}`, vscode.TreeItemCollapsibleState.None);
 
@@ -199,16 +201,30 @@ export class FoldingTreeDataProvider implements vscode.TreeDataProvider<vscode.T
         const rawRanges = await getFoldingRanges(editor.document);
         const rangeInfo = computeFoldingDepths(rawRanges);
 
+        // Precompute depths for all markers and determine minDepth to normalize indentation
+        const markerDepths = new Map<number, number>();
+        let minDepth = Infinity;
+        for (const m of markers) {
+            const d = resolveMarkerDepth(m.line, rangeInfo, editor.document);
+            markerDepths.set(m.line, d);
+            if (d < minDepth) {
+                minDepth = d;
+            }
+        }
+        if (minDepth === Infinity) {
+            minDepth = 1;
+        }
+
         if (!this._treeViewMode) {
-            // ── Flat list with arrow indentation per level up to level 8 ──
+            // ── Flat list with arrow indentation relative to minDepth ──
             return markers.map(m => {
-                const depth = resolveMarkerDepth(m.line, rangeInfo, editor.document);
-                return new MarkerTreeItem(editor.document.uri, m, depth, true);
+                const depth = markerDepths.get(m.line) ?? 1;
+                return new MarkerTreeItem(editor.document.uri, m, depth, true, minDepth);
             });
         }
 
         // ── Hierarchical Tree view mode ────────────────────────────────────
-        return this._buildTreeItems(editor.document.uri, markers, editor.document, rawRanges, rangeInfo);
+        return this._buildTreeItems(editor.document.uri, markers, editor.document, rawRanges, rangeInfo, markerDepths, minDepth);
     }
 
     // -----------------------------------------------------------------------
@@ -220,21 +236,23 @@ export class FoldingTreeDataProvider implements vscode.TreeDataProvider<vscode.T
         markers: MarkerItem[],
         document: vscode.TextDocument,
         rawRanges: vscode.FoldingRange[],
-        rangeInfo: FoldingRangeInfo[]
+        rangeInfo: FoldingRangeInfo[],
+        markerDepths: Map<number, number>,
+        minDepth: number
     ): vscode.TreeItem[] {
         if (rawRanges.length === 0 || markers.length <= 1) {
-            // No folding info or single marker — return flat list of marker items with arrow indentation
+            // No folding info or single marker — return flat list of marker items with relative arrow indentation
             return markers.map(m => {
-                const depth = resolveMarkerDepth(m.line, rangeInfo, document);
-                return new MarkerTreeItem(uri, m, depth, true);
+                const depth = markerDepths.get(m.line) ?? 1;
+                return new MarkerTreeItem(uri, m, depth, true, minDepth);
             });
         }
 
         // 1. Build a map: markerLine → MarkerTreeItem
         const itemByLine = new Map<number, MarkerTreeItem>();
         for (const m of markers) {
-            const depth = resolveMarkerDepth(m.line, rangeInfo, document);
-            itemByLine.set(m.line, new MarkerTreeItem(uri, m, depth, false));
+            const depth = markerDepths.get(m.line) ?? 1;
+            itemByLine.set(m.line, new MarkerTreeItem(uri, m, depth, false, minDepth));
         }
 
         const markerLines = markers.map(m => m.line).sort((a, b) => a - b);

@@ -14,9 +14,10 @@ class MarkerTreeItem extends vscode.TreeItem {
     depth;
     nestedChildren = [];
     parent;
-    constructor(documentUri, marker, depth = 1, applyIndentation = false) {
-        // Arrow indentation: "->" with 2 extra "-" at the beginning for each folding level up to level 8
-        const clampedLevel = Math.min(Math.max(1, depth), 8);
+    constructor(documentUri, marker, depth = 1, applyIndentation = false, minDepth = 1) {
+        // Arrow indentation: subtract smallest level from all nodes (depth - minDepth + 1) up to level 8
+        const relativeLevel = Math.max(1, depth - minDepth + 1);
+        const clampedLevel = Math.min(relativeLevel, 8);
         const indentPrefix = applyIndentation ? `${'-'.repeat(2 * (clampedLevel - 1))}-> ` : '';
         super(`${indentPrefix}Line ${marker.line + 1}`, vscode.TreeItemCollapsibleState.None);
         this.line = marker.line;
@@ -154,32 +155,45 @@ class FoldingTreeDataProvider {
         }
         const rawRanges = await (0, foldingManager_1.getFoldingRanges)(editor.document);
         const rangeInfo = (0, foldingManager_1.computeFoldingDepths)(rawRanges);
+        // Precompute depths for all markers and determine minDepth to normalize indentation
+        const markerDepths = new Map();
+        let minDepth = Infinity;
+        for (const m of markers) {
+            const d = resolveMarkerDepth(m.line, rangeInfo, editor.document);
+            markerDepths.set(m.line, d);
+            if (d < minDepth) {
+                minDepth = d;
+            }
+        }
+        if (minDepth === Infinity) {
+            minDepth = 1;
+        }
         if (!this._treeViewMode) {
-            // ── Flat list with arrow indentation per level up to level 8 ──
+            // ── Flat list with arrow indentation relative to minDepth ──
             return markers.map(m => {
-                const depth = resolveMarkerDepth(m.line, rangeInfo, editor.document);
-                return new MarkerTreeItem(editor.document.uri, m, depth, true);
+                const depth = markerDepths.get(m.line) ?? 1;
+                return new MarkerTreeItem(editor.document.uri, m, depth, true, minDepth);
             });
         }
         // ── Hierarchical Tree view mode ────────────────────────────────────
-        return this._buildTreeItems(editor.document.uri, markers, editor.document, rawRanges, rangeInfo);
+        return this._buildTreeItems(editor.document.uri, markers, editor.document, rawRanges, rangeInfo, markerDepths, minDepth);
     }
     // -----------------------------------------------------------------------
     // Tree-building helpers
     // -----------------------------------------------------------------------
-    _buildTreeItems(uri, markers, document, rawRanges, rangeInfo) {
+    _buildTreeItems(uri, markers, document, rawRanges, rangeInfo, markerDepths, minDepth) {
         if (rawRanges.length === 0 || markers.length <= 1) {
-            // No folding info or single marker — return flat list of marker items with arrow indentation
+            // No folding info or single marker — return flat list of marker items with relative arrow indentation
             return markers.map(m => {
-                const depth = resolveMarkerDepth(m.line, rangeInfo, document);
-                return new MarkerTreeItem(uri, m, depth, true);
+                const depth = markerDepths.get(m.line) ?? 1;
+                return new MarkerTreeItem(uri, m, depth, true, minDepth);
             });
         }
         // 1. Build a map: markerLine → MarkerTreeItem
         const itemByLine = new Map();
         for (const m of markers) {
-            const depth = resolveMarkerDepth(m.line, rangeInfo, document);
-            itemByLine.set(m.line, new MarkerTreeItem(uri, m, depth, false));
+            const depth = markerDepths.get(m.line) ?? 1;
+            itemByLine.set(m.line, new MarkerTreeItem(uri, m, depth, false, minDepth));
         }
         const markerLines = markers.map(m => m.line).sort((a, b) => a - b);
         // 2. Precompute the effective folding scope for each marker
