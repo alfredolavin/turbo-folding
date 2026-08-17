@@ -1,30 +1,16 @@
 import * as vscode from 'vscode';
 import { MarkerItem, MarkerManager, createSvgDataUri } from './markerManager';
-import { getFoldingRanges, computeFoldingDepths } from './foldingManager';
+import { getFoldingRanges } from './foldingManager';
 
 // ---------------------------------------------------------------------------
-// MarkerGroupItem — collapsible parent node used in tree view mode
-// ---------------------------------------------------------------------------
-export class MarkerGroupItem extends vscode.TreeItem {
-    public readonly children: MarkerTreeItem[];
-
-    constructor(label: string, children: MarkerTreeItem[]) {
-        super(label, vscode.TreeItemCollapsibleState.Expanded);
-        this.children = children;
-        this.description = `${children.length} marker${children.length !== 1 ? 's' : ''}`;
-        this.contextValue = 'markerGroup';
-        this.iconPath = new vscode.ThemeIcon('symbol-namespace');
-    }
-}
-
-// ---------------------------------------------------------------------------
-// MarkerTreeItem — leaf node (individual marker)
+// MarkerTreeItem — leaf or parent node in the folding markers hierarchy
 // ---------------------------------------------------------------------------
 export class MarkerTreeItem extends vscode.TreeItem {
     public readonly line: number;
     public readonly documentUri: vscode.Uri;
     public readonly marker: MarkerItem;
     public nestedChildren: MarkerTreeItem[] = [];
+    public parent?: MarkerTreeItem;
 
     constructor(documentUri: vscode.Uri, marker: MarkerItem) {
         super(`Line ${marker.line + 1}`, vscode.TreeItemCollapsibleState.None);
@@ -47,10 +33,57 @@ export class MarkerTreeItem extends vscode.TreeItem {
     /** Promote to collapsible when it has nested children (tree view mode). */
     public setNestedChildren(children: MarkerTreeItem[]) {
         this.nestedChildren = children;
+        for (const child of children) {
+            child.parent = this;
+        }
         this.collapsibleState = children.length > 0
             ? vscode.TreeItemCollapsibleState.Expanded
             : vscode.TreeItemCollapsibleState.None;
+
+        if (children.length > 0) {
+            this.tooltip = `Line ${this.line + 1}: ${this.marker.text || '(empty line)'}\nColor: ${this.marker.color}\n${children.length} nested marker${children.length !== 1 ? 's' : ''}\nClick to jump to line`;
+        }
     }
+}
+
+interface MarkerFoldingScope {
+    start: number;
+    end: number;
+}
+
+/**
+ * Returns the effective folding scope [start, end] initiated by the given marker line.
+ * If the line does not initiate a folding block, returns null.
+ */
+function getMarkerFoldingScope(
+    markerLine: number,
+    rawRanges: vscode.FoldingRange[]
+): MarkerFoldingScope | null {
+    // 1. Direct match: one or more folding ranges start exactly at markerLine
+    const exactMatches = rawRanges.filter(r => r.start === markerLine && r.end >= r.start);
+    if (exactMatches.length > 0) {
+        let maxEnd = markerLine;
+        for (const r of exactMatches) {
+            if (r.end > maxEnd) {
+                maxEnd = r.end;
+            }
+        }
+        return { start: markerLine, end: maxEnd };
+    }
+
+    // 2. Near-start match: marker is within a multi-line header/tag/decorator
+    // where the folding range starts 1-5 lines before markerLine and covers markerLine.
+    const headerCandidates = rawRanges.filter(
+        r => r.start < markerLine && r.end >= markerLine && (markerLine - r.start) <= 5
+    );
+    if (headerCandidates.length > 0) {
+        // Pick the closest start line
+        headerCandidates.sort((a, b) => b.start - a.start);
+        const best = headerCandidates[0];
+        return { start: best.start, end: best.end };
+    }
+
+    return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -92,12 +125,14 @@ export class FoldingTreeDataProvider implements vscode.TreeDataProvider<vscode.T
         return element;
     }
 
-    public async getChildren(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
-        // ── Children of a group node (tree view mode) ──────────────────────
-        if (element instanceof MarkerGroupItem) {
-            return element.children;
+    public getParent(element: vscode.TreeItem): vscode.TreeItem | undefined {
+        if (element instanceof MarkerTreeItem) {
+            return element.parent;
         }
+        return undefined;
+    }
 
+    public async getChildren(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
         // ── Children of a marker that has nested children ──────────────────
         if (element instanceof MarkerTreeItem) {
             return element.nestedChildren;
@@ -123,7 +158,7 @@ export class FoldingTreeDataProvider implements vscode.TreeDataProvider<vscode.T
             return markers.map(m => new MarkerTreeItem(editor.document.uri, m));
         }
 
-        // ── Tree view mode ─────────────────────────────────────────────────
+        // ── Hierarchical Tree view mode ────────────────────────────────────
         return this._buildTreeItems(editor.document.uri, markers, editor.document);
     }
 
@@ -138,14 +173,12 @@ export class FoldingTreeDataProvider implements vscode.TreeDataProvider<vscode.T
     ): Promise<vscode.TreeItem[]> {
         const rawRanges = await getFoldingRanges(document);
 
-        if (rawRanges.length === 0) {
-            // No folding info — fall back to flat list
+        if (rawRanges.length === 0 || markers.length <= 1) {
+            // No folding info or single marker — return flat list of marker items
             return markers.map(m => new MarkerTreeItem(uri, m));
         }
 
-        const rangeInfo = computeFoldingDepths(rawRanges);
-
-        // Build a map: markerLine → MarkerTreeItem
+        // 1. Build a map: markerLine → MarkerTreeItem
         const itemByLine = new Map<number, MarkerTreeItem>();
         for (const m of markers) {
             itemByLine.set(m.line, new MarkerTreeItem(uri, m));
@@ -153,28 +186,38 @@ export class FoldingTreeDataProvider implements vscode.TreeDataProvider<vscode.T
 
         const markerLines = markers.map(m => m.line).sort((a, b) => a - b);
 
-        // For each marker find its tightest enclosing marker (parent).
-        // A marker P is the parent of C when there is a folding range that
-        // starts at P.line and ends >= C.line, and no other marked line
-        // between P and C also covers C.
+        // 2. Precompute the effective folding scope for each marker
+        const scopeByLine = new Map<number, MarkerFoldingScope | null>();
+        for (const line of markerLines) {
+            scopeByLine.set(line, getMarkerFoldingScope(line, rawRanges));
+        }
+
+        // 3. For each marker, find its tightest enclosing parent marker.
+        // A marker P is an enclosing parent of C if:
+        //   - P.line < C.line
+        //   - P has a folding scope [P.start, P.end]
+        //   - C.line is enclosed: P.start <= C.line <= P.end
+        // The direct parent is the candidate with the smallest scope span (P.end - P.start).
         const parentOf = new Map<number, number | null>(); // childLine → parentLine | null
 
         for (const childLine of markerLines) {
             let bestParentLine: number | null = null;
-            let bestRangeSize = Infinity;
+            let bestSpan = Infinity;
 
             for (const parentLine of markerLines) {
-                if (parentLine >= childLine) { continue; }
+                if (parentLine >= childLine) {
+                    continue;
+                }
 
-                // Find a folding range that starts at parentLine and contains childLine
-                const coveringRange = rawRanges.find(
-                    r => r.start === parentLine && r.end >= childLine
-                );
+                const parentScope = scopeByLine.get(parentLine);
+                if (!parentScope) {
+                    continue;
+                }
 
-                if (coveringRange) {
-                    const size = coveringRange.end - coveringRange.start;
-                    if (size < bestRangeSize) {
-                        bestRangeSize = size;
+                if (childLine <= parentScope.end) {
+                    const span = parentScope.end - parentScope.start;
+                    if (span < bestSpan || (span === bestSpan && parentLine > (bestParentLine ?? -1))) {
+                        bestSpan = span;
                         bestParentLine = parentLine;
                     }
                 }
@@ -183,7 +226,7 @@ export class FoldingTreeDataProvider implements vscode.TreeDataProvider<vscode.T
             parentOf.set(childLine, bestParentLine);
         }
 
-        // Attach nested children to their parent MarkerTreeItems
+        // 4. Attach nested children to their parent MarkerTreeItems
         for (const childLine of markerLines) {
             const parentLine = parentOf.get(childLine);
             if (parentLine !== null && parentLine !== undefined) {
@@ -193,54 +236,18 @@ export class FoldingTreeDataProvider implements vscode.TreeDataProvider<vscode.T
             }
         }
 
-        // Promote parents with children to collapsible
+        // 5. Promote parents with children to collapsible (Expanded)
         for (const item of itemByLine.values()) {
             if (item.nestedChildren.length > 0) {
                 item.setNestedChildren(item.nestedChildren);
             }
         }
 
-        // Top-level items: markers with no parent marker
+        // 6. Top-level items: markers with no parent marker in the document
         const topLevel = markerLines
             .filter(line => parentOf.get(line) === null)
             .map(line => itemByLine.get(line)!);
 
-        // If all markers ended up at top level (no nesting), group by depth
-        const allTopLevel = topLevel.length === markerLines.length;
-        if (allTopLevel && markerLines.length > 1) {
-            return this._groupByDepth(uri, markers, rangeInfo);
-        }
-
         return topLevel;
-    }
-
-    /** Fallback grouping: organise markers into depth-level group nodes. */
-    private _groupByDepth(
-        uri: vscode.Uri,
-        markers: MarkerItem[],
-        rangeInfo: ReturnType<typeof computeFoldingDepths>
-    ): vscode.TreeItem[] {
-        const depthMap = new Map<number, MarkerItem[]>();
-
-        for (const m of markers) {
-            const info = rangeInfo.find(r => r.startLine === m.line)
-                ?? rangeInfo
-                    .filter(r => r.startLine <= m.line && r.endLine >= m.line)
-                    .sort((a, b) => (a.endLine - a.startLine) - (b.endLine - b.startLine))[0];
-
-            const depth = info ? info.depth : 1;
-            if (!depthMap.has(depth)) { depthMap.set(depth, []); }
-            depthMap.get(depth)!.push(m);
-        }
-
-        const groups: MarkerGroupItem[] = [];
-        const sortedDepths = [...depthMap.keys()].sort((a, b) => a - b);
-
-        for (const depth of sortedDepths) {
-            const items = depthMap.get(depth)!.map(m => new MarkerTreeItem(uri, m));
-            groups.push(new MarkerGroupItem(`Level ${depth}`, items));
-        }
-
-        return groups;
     }
 }
