@@ -22,19 +22,34 @@ class MarkerTreeItem extends vscode.TreeItem {
         const linePrefix = showLineNumber ? `:${marker.line + 1}` : '';
         const prefix = (indentPrefix + linePrefix).trimEnd();
         const previewText = marker.text && marker.text.length > 0 ? marker.text : '(empty line)';
-        // Combine prefix with preview text and bold the preview text via highlights
+        const comment = marker.comment && marker.comment.length > 0 ? marker.comment : null;
+        // Combine prefix with preview text (or two-line preview if comment exists) and bold the preview text via highlights
         let fullLabel;
         let previewStart;
         let previewEnd;
-        if (prefix.length > 0) {
-            fullLabel = `${prefix}  ${previewText}`;
-            previewStart = prefix.length + 2;
-            previewEnd = fullLabel.length;
+        if (comment) {
+            if (prefix.length > 0) {
+                fullLabel = `${prefix}  ${comment}\n${previewText}`;
+                previewStart = prefix.length + 2;
+                previewEnd = fullLabel.length;
+            }
+            else {
+                fullLabel = `${comment}\n${previewText}`;
+                previewStart = 0;
+                previewEnd = fullLabel.length;
+            }
         }
         else {
-            fullLabel = previewText;
-            previewStart = 0;
-            previewEnd = fullLabel.length;
+            if (prefix.length > 0) {
+                fullLabel = `${prefix}  ${previewText}`;
+                previewStart = prefix.length + 2;
+                previewEnd = fullLabel.length;
+            }
+            else {
+                fullLabel = previewText;
+                previewStart = 0;
+                previewEnd = fullLabel.length;
+            }
         }
         super({
             label: fullLabel,
@@ -44,7 +59,8 @@ class MarkerTreeItem extends vscode.TreeItem {
         this.documentUri = documentUri;
         this.marker = marker;
         this.depth = depth;
-        this.tooltip = `:${marker.line + 1} (Level ${depth}): ${previewText}\nColor: ${marker.color}\nClick to jump to line`;
+        const tooltipPreview = comment ? `${comment}\n${previewText}` : previewText;
+        this.tooltip = `:${marker.line + 1} (Level ${depth}): ${tooltipPreview}\nColor: ${marker.color}\nClick to jump to line`;
         this.iconPath = (0, markerManager_1.createSvgDataUri)(marker.color);
         this.contextValue = 'markerItem';
         this.command = {
@@ -64,7 +80,10 @@ class MarkerTreeItem extends vscode.TreeItem {
             : vscode.TreeItemCollapsibleState.None;
         if (children.length > 0) {
             const previewText = this.marker.text && this.marker.text.length > 0 ? this.marker.text : '(empty line)';
-            this.tooltip = `:${this.line + 1} (Level ${this.depth}): ${previewText}\nColor: ${this.marker.color}\n${children.length} nested marker${children.length !== 1 ? 's' : ''}\nClick to jump to line`;
+            const tooltipPreview = this.marker.comment && this.marker.comment.length > 0
+                ? `${this.marker.comment}\n${previewText}`
+                : previewText;
+            this.tooltip = `:${this.line + 1} (Level ${this.depth}): ${tooltipPreview}\nColor: ${this.marker.color}\n${children.length} nested marker${children.length !== 1 ? 's' : ''}\nClick to jump to line`;
         }
     }
 }
@@ -175,12 +194,16 @@ class FoldingTreeDataProvider {
             placeholder.description = 'Open a file to view markers';
             return [placeholder];
         }
-        const markers = this.markerManager.getMarkers(editor.document.uri);
-        if (markers.length === 0) {
+        const rawMarkers = this.markerManager.getMarkers(editor.document.uri);
+        if (rawMarkers.length === 0) {
             const placeholder = new vscode.TreeItem('No markers in current file', vscode.TreeItemCollapsibleState.None);
             placeholder.description = 'Toggle marker on line to add';
             return [placeholder];
         }
+        const markers = rawMarkers.map(m => {
+            const comment = m.comment !== undefined ? m.comment : ((0, foldingManager_1.getCommentBeforeLine)(editor.document, m.line) ?? undefined);
+            return { ...m, comment };
+        });
         const rawRanges = await (0, foldingManager_1.getFoldingRanges)(editor.document);
         const rangeInfo = (0, foldingManager_1.computeFoldingDepths)(rawRanges);
         // Precompute depths for all markers and determine minDepth to normalize indentation

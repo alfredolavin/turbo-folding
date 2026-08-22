@@ -492,3 +492,46 @@ export async function findFoldablesAtSameLevel(
 
     return matches;
 }
+
+/**
+ * Checks if a trimmed line is a comment in common programming or markup languages.
+ */
+export function isCommentText(text: string): boolean {
+    const trimmed = text.trim();
+    if (!trimmed) {
+        return false;
+    }
+    return (
+        trimmed.startsWith('//') ||
+        trimmed.startsWith('/*') ||
+        trimmed.startsWith('*') ||
+        trimmed.startsWith('<!--') ||
+        trimmed.startsWith('#') ||
+        trimmed.startsWith('--') ||
+        trimmed.startsWith(';') ||
+        trimmed.startsWith('{-') ||
+        trimmed.startsWith('(*') ||
+        trimmed.startsWith('%') ||
+        trimmed.startsWith("'") ||
+        /^rem\b/i.test(trimmed) ||
+        (trimmed.startsWith('"""') && trimmed.endsWith('"""') && trimmed.length >= 6) ||
+        (trimmed.startsWith("'''") && trimmed.endsWith("'''") && trimmed.length >= 6)
+    );
+}
+
+/**
+ * If the line immediately preceding the given line in the document is a comment
+ * and its trimmed length is smaller than 40 characters, returns the trimmed comment.
+ * Otherwise returns null.
+ */
+export function getCommentBeforeLine(document: vscode.TextDocument, line: number): string | null {
+    if (line <= 0 || line >= document.lineCount) {
+        return null;
+    }
+    const prevLineText = document.lineAt(line - 1).text;
+    const trimmed = prevLineText.trim();
+    if (trimmed.length > 0 && trimmed.length < 40 && isCommentText(trimmed)) {
+        return trimmed;
+    }
+    return null;
+}

@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.MarkerManager = exports.DEFAULT_VIVID_PALETTE = void 0;
 exports.createSvgDataUri = createSvgDataUri;
 const vscode = require("vscode");
+const foldingManager_1 = require("./foldingManager");
 exports.DEFAULT_VIVID_PALETTE = [
     '#FF3366', // Neon Pink
     '#00D2FF', // Vivid Sky Blue
@@ -110,7 +111,7 @@ class MarkerManager {
                         const color = typeof item.color === 'string' && item.color.length > 0
                             ? item.color
                             : palette[idx % palette.length];
-                        markerMap.set(item.line, { line: item.line, text: item.text, color });
+                        markerMap.set(item.line, { line: item.line, text: item.text, comment: item.comment, color });
                         idx++;
                     }
                 }
@@ -149,8 +150,9 @@ class MarkerManager {
             return false;
         }
         const lineText = editor.document.lineAt(lineToAdd).text.trim();
+        const comment = (0, foldingManager_1.getCommentBeforeLine)(editor.document, lineToAdd) ?? undefined;
         const color = this.assignColor(docUri);
-        markerMap.set(lineToAdd, { line: lineToAdd, text: lineText, color });
+        markerMap.set(lineToAdd, { line: lineToAdd, text: lineText, comment, color });
         this.saveMarkers();
         this.updateDecorations(editor, false);
         this._onDidChangeMarkers.fire(editor.document.uri);
@@ -169,8 +171,9 @@ class MarkerManager {
         }
         else {
             const lineText = editor.document.lineAt(lineToToggle).text.trim();
+            const comment = (0, foldingManager_1.getCommentBeforeLine)(editor.document, lineToToggle) ?? undefined;
             const color = this.assignColor(docUri);
-            markerMap.set(lineToToggle, { line: lineToToggle, text: lineText, color });
+            markerMap.set(lineToToggle, { line: lineToToggle, text: lineText, comment, color });
         }
         if (markerMap.size === 0) {
             this.markers.delete(docUri);
@@ -232,7 +235,11 @@ class MarkerManager {
             const lineValid = targetLine >= 0 && targetLine < document.lineCount;
             const currentLineText = lineValid ? document.lineAt(targetLine).text.trim() : null;
             if (targetText && lineValid && currentLineText === targetText) {
-                newMap.set(targetLine, { line: targetLine, text: targetText, color: marker.color });
+                const comment = (0, foldingManager_1.getCommentBeforeLine)(document, targetLine) ?? undefined;
+                if (comment !== marker.comment) {
+                    changed = true;
+                }
+                newMap.set(targetLine, { line: targetLine, text: targetText, comment, color: marker.color });
                 usedLines.add(targetLine);
                 continue;
             }
@@ -255,14 +262,16 @@ class MarkerManager {
             }
             if (foundLine !== undefined) {
                 changed = true;
-                newMap.set(foundLine, { line: foundLine, text: targetText, color: marker.color });
+                const comment = (0, foldingManager_1.getCommentBeforeLine)(document, foundLine) ?? undefined;
+                newMap.set(foundLine, { line: foundLine, text: targetText, comment, color: marker.color });
                 usedLines.add(foundLine);
             }
             else if (lineValid) {
                 const updatedText = document.lineAt(targetLine).text.trim();
-                newMap.set(targetLine, { line: targetLine, text: updatedText, color: marker.color });
+                const comment = (0, foldingManager_1.getCommentBeforeLine)(document, targetLine) ?? undefined;
+                newMap.set(targetLine, { line: targetLine, text: updatedText, comment, color: marker.color });
                 usedLines.add(targetLine);
-                if (updatedText !== targetText) {
+                if (updatedText !== targetText || comment !== marker.comment) {
                     changed = true;
                 }
             }
@@ -270,7 +279,8 @@ class MarkerManager {
                 const clamped = Math.max(0, document.lineCount - 1);
                 if (!usedLines.has(clamped)) {
                     changed = true;
-                    newMap.set(clamped, { line: clamped, text: document.lineAt(clamped).text.trim(), color: marker.color });
+                    const comment = (0, foldingManager_1.getCommentBeforeLine)(document, clamped) ?? undefined;
+                    newMap.set(clamped, { line: clamped, text: document.lineAt(clamped).text.trim(), comment, color: marker.color });
                     usedLines.add(clamped);
                 }
             }
@@ -352,9 +362,10 @@ class MarkerManager {
         const newMap = new Map();
         for (const m of currentMarkers) {
             if (m.line >= 0 && m.line < event.document.lineCount) {
-                // Refresh the snippet text but keep the line number as-is (do NOT re-anchor)
+                // Refresh the snippet text and comment but keep the line number as-is (do NOT re-anchor)
                 const text = event.document.lineAt(m.line).text.trim();
-                newMap.set(m.line, { line: m.line, text, color: m.color });
+                const comment = (0, foldingManager_1.getCommentBeforeLine)(event.document, m.line) ?? undefined;
+                newMap.set(m.line, { line: m.line, text, comment, color: m.color });
             }
         }
         this.markers.set(docUri, newMap);

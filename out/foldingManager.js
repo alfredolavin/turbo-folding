@@ -11,6 +11,8 @@ exports.resolveSemanticInfo = resolveSemanticInfo;
 exports.isSameSemanticType = isSameSemanticType;
 exports.findSameTagLinesAtSameLevel = findSameTagLinesAtSameLevel;
 exports.findFoldablesAtSameLevel = findFoldablesAtSameLevel;
+exports.isCommentText = isCommentText;
+exports.getCommentBeforeLine = getCommentBeforeLine;
 const vscode = require("vscode");
 async function getFoldingRanges(document) {
     try {
@@ -403,5 +405,44 @@ async function findFoldablesAtSameLevel(document, referenceLine, sameTypeOnly = 
         matches.sort((a, b) => a - b);
     }
     return matches;
+}
+/**
+ * Checks if a trimmed line is a comment in common programming or markup languages.
+ */
+function isCommentText(text) {
+    const trimmed = text.trim();
+    if (!trimmed) {
+        return false;
+    }
+    return (trimmed.startsWith('//') ||
+        trimmed.startsWith('/*') ||
+        trimmed.startsWith('*') ||
+        trimmed.startsWith('<!--') ||
+        trimmed.startsWith('#') ||
+        trimmed.startsWith('--') ||
+        trimmed.startsWith(';') ||
+        trimmed.startsWith('{-') ||
+        trimmed.startsWith('(*') ||
+        trimmed.startsWith('%') ||
+        trimmed.startsWith("'") ||
+        /^rem\b/i.test(trimmed) ||
+        (trimmed.startsWith('"""') && trimmed.endsWith('"""') && trimmed.length >= 6) ||
+        (trimmed.startsWith("'''") && trimmed.endsWith("'''") && trimmed.length >= 6));
+}
+/**
+ * If the line immediately preceding the given line in the document is a comment
+ * and its trimmed length is smaller than 40 characters, returns the trimmed comment.
+ * Otherwise returns null.
+ */
+function getCommentBeforeLine(document, line) {
+    if (line <= 0 || line >= document.lineCount) {
+        return null;
+    }
+    const prevLineText = document.lineAt(line - 1).text;
+    const trimmed = prevLineText.trim();
+    if (trimmed.length > 0 && trimmed.length < 40 && isCommentText(trimmed)) {
+        return trimmed;
+    }
+    return null;
 }
 //# sourceMappingURL=foldingManager.js.map

@@ -1,8 +1,10 @@
 import * as vscode from 'vscode';
+import { getCommentBeforeLine } from './foldingManager';
 
 export interface MarkerItem {
     line: number;
     text?: string;
+    comment?: string;
     color: string;
 }
 
@@ -124,7 +126,7 @@ export class MarkerManager implements vscode.Disposable {
                         const color = typeof item.color === 'string' && item.color.length > 0
                             ? item.color
                             : palette[idx % palette.length];
-                        markerMap.set(item.line, { line: item.line, text: item.text, color });
+                        markerMap.set(item.line, { line: item.line, text: item.text, comment: item.comment, color });
                         idx++;
                     }
                 }
@@ -169,8 +171,9 @@ export class MarkerManager implements vscode.Disposable {
         }
 
         const lineText = editor.document.lineAt(lineToAdd).text.trim();
+        const comment = getCommentBeforeLine(editor.document, lineToAdd) ?? undefined;
         const color = this.assignColor(docUri);
-        markerMap.set(lineToAdd, { line: lineToAdd, text: lineText, color });
+        markerMap.set(lineToAdd, { line: lineToAdd, text: lineText, comment, color });
 
         this.saveMarkers();
         this.updateDecorations(editor, false);
@@ -192,8 +195,9 @@ export class MarkerManager implements vscode.Disposable {
             markerMap.delete(lineToToggle);
         } else {
             const lineText = editor.document.lineAt(lineToToggle).text.trim();
+            const comment = getCommentBeforeLine(editor.document, lineToToggle) ?? undefined;
             const color = this.assignColor(docUri);
-            markerMap.set(lineToToggle, { line: lineToToggle, text: lineText, color });
+            markerMap.set(lineToToggle, { line: lineToToggle, text: lineText, comment, color });
         }
 
         if (markerMap.size === 0) {
@@ -268,7 +272,11 @@ export class MarkerManager implements vscode.Disposable {
             const currentLineText = lineValid ? document.lineAt(targetLine).text.trim() : null;
 
             if (targetText && lineValid && currentLineText === targetText) {
-                newMap.set(targetLine, { line: targetLine, text: targetText, color: marker.color });
+                const comment = getCommentBeforeLine(document, targetLine) ?? undefined;
+                if (comment !== marker.comment) {
+                    changed = true;
+                }
+                newMap.set(targetLine, { line: targetLine, text: targetText, comment, color: marker.color });
                 usedLines.add(targetLine);
                 continue;
             }
@@ -294,20 +302,23 @@ export class MarkerManager implements vscode.Disposable {
 
             if (foundLine !== undefined) {
                 changed = true;
-                newMap.set(foundLine, { line: foundLine, text: targetText, color: marker.color });
+                const comment = getCommentBeforeLine(document, foundLine) ?? undefined;
+                newMap.set(foundLine, { line: foundLine, text: targetText, comment, color: marker.color });
                 usedLines.add(foundLine);
             } else if (lineValid) {
                 const updatedText = document.lineAt(targetLine).text.trim();
-                newMap.set(targetLine, { line: targetLine, text: updatedText, color: marker.color });
+                const comment = getCommentBeforeLine(document, targetLine) ?? undefined;
+                newMap.set(targetLine, { line: targetLine, text: updatedText, comment, color: marker.color });
                 usedLines.add(targetLine);
-                if (updatedText !== targetText) {
+                if (updatedText !== targetText || comment !== marker.comment) {
                     changed = true;
                 }
             } else {
                 const clamped = Math.max(0, document.lineCount - 1);
                 if (!usedLines.has(clamped)) {
                     changed = true;
-                    newMap.set(clamped, { line: clamped, text: document.lineAt(clamped).text.trim(), color: marker.color });
+                    const comment = getCommentBeforeLine(document, clamped) ?? undefined;
+                    newMap.set(clamped, { line: clamped, text: document.lineAt(clamped).text.trim(), comment, color: marker.color });
                     usedLines.add(clamped);
                 }
             }
@@ -400,9 +411,10 @@ export class MarkerManager implements vscode.Disposable {
         const newMap = new Map<number, MarkerItem>();
         for (const m of currentMarkers) {
             if (m.line >= 0 && m.line < event.document.lineCount) {
-                // Refresh the snippet text but keep the line number as-is (do NOT re-anchor)
+                // Refresh the snippet text and comment but keep the line number as-is (do NOT re-anchor)
                 const text = event.document.lineAt(m.line).text.trim();
-                newMap.set(m.line, { line: m.line, text, color: m.color });
+                const comment = getCommentBeforeLine(event.document, m.line) ?? undefined;
+                newMap.set(m.line, { line: m.line, text, comment, color: m.color });
             }
         }
 
